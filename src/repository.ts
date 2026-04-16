@@ -1,0 +1,261 @@
+/**
+ * DocumentRepository — the abstraction layer between MCP tools and the database.
+ *
+ * All MCP tools interact only with this interface. To add a PostgreSQL backend:
+ *   1. Implement `DocumentRepository` in a new `PgDocumentRepository` class
+ *   2. Use pgvector's `<=>` operator for native cosine similarity in `search()`
+ *      instead of the in-JS computation used here
+ *   3. Wire it up in index.ts based on DATABASE_DRIVER env var
+ */
+
+import { randomUUID } from "node:crypto";
+import { eq, sql } from "drizzle-orm";
+import { db } from "./db.ts";
+import { documents } from "./schema.ts";
+
+// ---------------------------------------------------------------------------
+// Shared types
+// ---------------------------------------------------------------------------
+
+export interface Document {
+	id: string;
+	title: string;
+	content: string;
+	tags: string[];
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface SearchResult extends Document {
+	/** Cosine similarity in [0, 1]. Higher = more relevant. */
+	similarity: number;
+}
+
+// ---------------------------------------------------------------------------
+// Repository interface
+// ---------------------------------------------------------------------------
+
+export interface DocumentRepository {
+	/**
+	 * Insert or update a document. Pass `id` to update an existing document,
+	 * omit it to create a new one.
+	 */
+	upsert(params: {
+		id?: string;
+		title: string;
+		content: string;
+		tags?: string[];
+		embedding: number[];
+	}): Promise<Document>;
+
+	/**
+	 * Return the top `limit` documents ranked by cosine similarity to the
+	 * provided query embedding, optionally filtered to a specific tag.
+	 */
+	search(params: {
+		embedding: number[];
+		limit?: number;
+		tag?: string;
+	}): Promise<SearchResult[]>;
+
+	/** Retrieve a single document by ID. Returns null if not found. */
+	getById(id: string): Promise<Document | null>;
+
+	/** List all documents, optionally filtered by tag. */
+	list(params?: { tag?: string }): Promise<Document[]>;
+
+	/** Delete a document by ID. Returns true if a row was deleted. */
+	delete(id: string): Promise<boolean>;
+}
+
+// ---------------------------------------------------------------------------
+// Serialisation helpers
+// ---------------------------------------------------------------------------
+
+function embeddingToBuffer(embedding: number[]): Buffer {
+	const buf = Buffer.allocUnsafe(embedding.length * 4);
+	for (let i = 0; i < embedding.length; i++) {
+		buf.writeFloatLE(embedding[i], i * 4);
+	}
+	return buf;
+}
+
+function bufferToEmbedding(buf: Buffer | Uint8Array | null): number[] | null {
+	if (!buf) return null;
+	const view = buf instanceof Buffer ? buf : Buffer.from(buf);
+	const result: number[] = new Array(view.byteLength / 4);
+	for (let i = 0; i < result.length; i++) {
+		result[i] = view.readFloatLE(i * 4);
+	}
+	return result;
+}
+
+function rowToDocument(row: {
+	id: string;
+	title: string;
+	content: string;
+	tags: string;
+	createdAt: string;
+	updatedAt: string;
+}): Document {
+	return {
+		id: row.id,
+		title: row.title,
+		content: row.content,
+		tags: JSON.parse(row.tags) as string[],
+		createdAt: row.createdAt,
+		updatedAt: row.updatedAt,
+	};
+}
+
+function cosineSimilarity(a: number[], b: number[]): number {
+	let dot = 0;
+	let normA = 0;
+	let normB = 0;
+	for (let i = 0; i < a.length; i++) {
+		dot += a[i] * b[i];
+		normA += a[i] * a[i];
+		normB += b[i] * b[i];
+	}
+	const denom = Math.sqrt(normA) * Math.sqrt(normB);
+	return denom === 0 ? 0 : dot / denom;
+}
+
+// ---------------------------------------------------------------------------
+// SQLite implementation
+// ---------------------------------------------------------------------------
+
+export class SqliteDocumentRepository implements DocumentRepository {
+	async upsert(params: {
+		id?: string;
+		title: string;
+		content: string;
+		tags?: string[];
+		embedding: number[];
+	}): Promise<Document> {
+		const now = new Date().toISOString();
+		const id = params.id ?? randomUUID();
+		const tagsJson = JSON.stringify(params.tags ?? []);
+		const embeddingBuf = embeddingToBuffer(params.embedding);
+
+		await db
+			.insert(documents)
+			.values({
+				id,
+				title: params.title,
+				content: params.content,
+				tags: tagsJson,
+				embedding: embeddingBuf,
+				createdAt: now,
+				updatedAt: now,
+			})
+			.onConflictDoUpdate({
+				target: documents.id,
+				set: {
+					title: params.title,
+					content: params.content,
+					tags: tagsJson,
+					embedding: embeddingBuf,
+					updatedAt: now,
+				},
+			});
+
+		return {
+			id,
+			title: params.title,
+			content: params.content,
+			tags: params.tags ?? [],
+			createdAt: now,
+			updatedAt: now,
+		};
+	}
+
+	async search(params: {
+		embedding: number[];
+		limit?: number;
+		tag?: string;
+	}): Promise<SearchResult[]> {
+		const limit = params.limit ?? 5;
+
+		// Fetch all rows that have embeddings. For large collections, replace this
+		// with pgvector's ORDER BY embedding <=> $1 LIMIT $2 in the pg implementation.
+		const rows = await db
+			.select({
+				id: documents.id,
+				title: documents.title,
+				content: documents.content,
+				tags: documents.tags,
+				embedding: documents.embedding,
+				createdAt: documents.createdAt,
+				updatedAt: documents.updatedAt,
+			})
+			.from(documents)
+			.where(sql`${documents.embedding} IS NOT NULL`);
+
+		const results: SearchResult[] = [];
+
+		for (const row of rows) {
+			if (params.tag) {
+				const tags = JSON.parse(row.tags) as string[];
+				if (!tags.includes(params.tag)) continue;
+			}
+
+			const rowEmbedding = bufferToEmbedding(row.embedding as Buffer | null);
+			if (!rowEmbedding) continue;
+
+			const similarity = cosineSimilarity(params.embedding, rowEmbedding);
+			results.push({ ...rowToDocument(row), similarity });
+		}
+
+		return results
+			.sort((a, b) => b.similarity - a.similarity)
+			.slice(0, limit);
+	}
+
+	async getById(id: string): Promise<Document | null> {
+		const row = await db
+			.select({
+				id: documents.id,
+				title: documents.title,
+				content: documents.content,
+				tags: documents.tags,
+				createdAt: documents.createdAt,
+				updatedAt: documents.updatedAt,
+			})
+			.from(documents)
+			.where(eq(documents.id, id))
+			.get();
+
+		return row ? rowToDocument(row) : null;
+	}
+
+	async list(params?: { tag?: string }): Promise<Document[]> {
+		const rows = await db
+			.select({
+				id: documents.id,
+				title: documents.title,
+				content: documents.content,
+				tags: documents.tags,
+				createdAt: documents.createdAt,
+				updatedAt: documents.updatedAt,
+			})
+			.from(documents);
+
+		const docs = rows.map(rowToDocument);
+
+		if (params?.tag) {
+			return docs.filter((d) => d.tags.includes(params.tag!));
+		}
+
+		return docs;
+	}
+
+	async delete(id: string): Promise<boolean> {
+		const result = await db
+			.delete(documents)
+			.where(eq(documents.id, id))
+			.returning({ id: documents.id });
+
+		return result.length > 0;
+	}
+}
