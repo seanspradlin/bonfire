@@ -10,8 +10,8 @@
 
 import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
-import { db } from "./db.ts";
-import { documents } from "./schema.ts";
+import { db } from "./db";
+import { documents } from "./schema";
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -207,13 +207,11 @@ export class SqliteDocumentRepository implements DocumentRepository {
 			results.push({ ...rowToDocument(row), similarity });
 		}
 
-		return results
-			.sort((a, b) => b.similarity - a.similarity)
-			.slice(0, limit);
+		return results.sort((a, b) => b.similarity - a.similarity).slice(0, limit);
 	}
 
 	async getById(id: string): Promise<Document | null> {
-		const row = await db
+		const rows = await db
 			.select({
 				id: documents.id,
 				title: documents.title,
@@ -224,9 +222,12 @@ export class SqliteDocumentRepository implements DocumentRepository {
 			})
 			.from(documents)
 			.where(eq(documents.id, id))
-			.get();
+			.limit(1);
 
-		return row ? rowToDocument(row) : null;
+		if (rows[0]) {
+			return rowToDocument(rows[0]);
+		}
+		return null;
 	}
 
 	async list(params?: { tag?: string }): Promise<Document[]> {

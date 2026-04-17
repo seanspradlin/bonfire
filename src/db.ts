@@ -9,12 +9,12 @@
 
 import { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import * as schema from "./schema.ts";
+import * as schema from "./schema";
 
 const url = process.env.DATABASE_URL ?? "data/bonfire.db";
 const sqlite = new Database(url);
 
 // Enable WAL mode for better concurrent read performance
-sqlite.exec("PRAGMA journal_mode = WAL;");
+sqlite.run("PRAGMA journal_mode = WAL;");
 
 export const db = drizzle(sqlite, { schema });

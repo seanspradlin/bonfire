@@ -1,8 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
-import { type EmbeddingProvider } from "./embeddings.ts";
-import { type DocumentRepository } from "./repository.ts";
+import type { EmbeddingProvider } from "./embeddings";
+import type { DocumentRepository } from "./repository";
 
 // ---------------------------------------------------------------------------
 // MCP server factory
@@ -21,25 +21,29 @@ function createServer(
 	// Tool: add_document
 	// -------------------------------------------------------------------------
 
-	server.tool(
+	server.registerTool(
 		"add_document",
-		"Add a new knowledge base document or update an existing one. " +
-			"Accepts markdown content. Provide `id` to update an existing document.",
 		{
-			title: z.string().describe("Short, descriptive title for the document"),
-			content: z
-				.string()
-				.describe("Full document content in markdown format"),
-			tags: z
-				.array(z.string())
-				.optional()
-				.describe(
-					"Tags for categorisation and filtering (e.g. ['marketing', 'hubspot'])",
-				),
-			id: z
-				.string()
-				.optional()
-				.describe("Document ID — omit to create a new document"),
+			title: "Add Document",
+			description:
+				"Add a new knowledge base document or update an existing one. " +
+				"Accepts markdown content. Provide `id` to update an existing document.",
+			inputSchema: {
+				title: z.string().describe("Short, descriptive title for the document"),
+				content: z
+					.string()
+					.describe("Full document content in markdown format"),
+				tags: z
+					.array(z.string())
+					.optional()
+					.describe(
+						"Tags for categorisation and filtering (e.g. ['marketing', 'hubspot'])",
+					),
+				id: z
+					.string()
+					.optional()
+					.describe("Document ID — omit to create a new document"),
+			},
 		},
 		async ({ title, content, tags, id }) => {
 			const embedding = await embedder.embed(`${title}\n\n${content}`);
@@ -50,7 +54,13 @@ function createServer(
 					{
 						type: "text",
 						text: JSON.stringify(
-							{ id: doc.id, title: doc.title, tags: doc.tags, createdAt: doc.createdAt, updatedAt: doc.updatedAt },
+							{
+								id: doc.id,
+								title: doc.title,
+								tags: doc.tags,
+								createdAt: doc.createdAt,
+								updatedAt: doc.updatedAt,
+							},
 							null,
 							2,
 						),
@@ -64,27 +74,31 @@ function createServer(
 	// Tool: search_documents
 	// -------------------------------------------------------------------------
 
-	server.tool(
+	server.registerTool(
 		"search_documents",
-		"Search the knowledge base using natural language. Returns the most " +
-			"semantically relevant documents ranked by similarity score.",
 		{
-			query: z
-				.string()
-				.describe(
-					"Natural language search query, e.g. 'How do I issue a refund for a gift card purchase?'",
-				),
-			limit: z
-				.number()
-				.int()
-				.min(1)
-				.max(20)
-				.optional()
-				.describe("Maximum number of results to return (default: 5)"),
-			tag: z
-				.string()
-				.optional()
-				.describe("Restrict results to documents with this tag"),
+			title: "Search Documents",
+			description:
+				"Search the knowledge base using natural language. Returns the most " +
+				"semantically relevant documents ranked by similarity score.",
+			inputSchema: {
+				query: z
+					.string()
+					.describe(
+						"Natural language search query, e.g. 'How do I issue a refund for a gift card purchase?'",
+					),
+				limit: z
+					.number()
+					.int()
+					.min(1)
+					.max(20)
+					.optional()
+					.describe("Maximum number of results to return (default: 5)"),
+				tag: z
+					.string()
+					.optional()
+					.describe("Restrict results to documents with this tag"),
+			},
 		},
 		async ({ query, limit, tag }) => {
 			const embedding = await embedder.embed(query);
@@ -114,11 +128,14 @@ function createServer(
 	// Tool: get_document
 	// -------------------------------------------------------------------------
 
-	server.tool(
+	server.registerTool(
 		"get_document",
-		"Retrieve the full content of a document by its ID.",
 		{
-			id: z.string().describe("Document ID"),
+			title: "Get Document",
+			description: "Retrieve the full content of a document by its ID.",
+			inputSchema: {
+				id: z.string().describe("Document ID"),
+			},
 		},
 		async ({ id }) => {
 			const doc = await repo.getById(id);
@@ -140,14 +157,15 @@ function createServer(
 	// Tool: list_documents
 	// -------------------------------------------------------------------------
 
-	server.tool(
+	server.registerTool(
 		"list_documents",
-		"List all documents in the knowledge base. Optionally filter by tag.",
 		{
-			tag: z
-				.string()
-				.optional()
-				.describe("Filter documents by this tag"),
+			title: "List Documents",
+			description:
+				"List all documents in the knowledge base. Optionally filter by tag.",
+			inputSchema: {
+				tag: z.string().optional().describe("Filter documents by this tag"),
+			},
 		},
 		async ({ tag }) => {
 			const docs = await repo.list({ tag });
@@ -176,11 +194,14 @@ function createServer(
 	// Tool: delete_document
 	// -------------------------------------------------------------------------
 
-	server.tool(
+	server.registerTool(
 		"delete_document",
-		"Permanently delete a document from the knowledge base.",
 		{
-			id: z.string().describe("Document ID to delete"),
+			title: "Delete Document",
+			description: "Permanently delete a document from the knowledge base.",
+			inputSchema: {
+				id: z.string().describe("Document ID to delete"),
+			},
 		},
 		async ({ id }) => {
 			const deleted = await repo.delete(id);
@@ -214,10 +235,7 @@ export function createMcpHandler(
 	repo: DocumentRepository,
 	embedder: EmbeddingProvider,
 ) {
-	const sessions = new Map<
-		string,
-		WebStandardStreamableHTTPServerTransport
-	>();
+	const sessions = new Map<string, WebStandardStreamableHTTPServerTransport>();
 
 	return async (req: Request): Promise<Response> => {
 		const sessionId = req.headers.get("mcp-session-id");
@@ -237,7 +255,9 @@ export function createMcpHandler(
 		// New session — only allow on POST (initialize requests)
 		if (req.method !== "POST") {
 			return new Response(
-				JSON.stringify({ error: "Send a POST initialize request to start a session" }),
+				JSON.stringify({
+					error: "Send a POST initialize request to start a session",
+				}),
 				{ status: 400, headers: { "Content-Type": "application/json" } },
 			);
 		}
