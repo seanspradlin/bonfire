@@ -100,11 +100,21 @@ function createServer(
 					.string()
 					.optional()
 					.describe("Restrict results to documents with this tag"),
+				since: z
+					.string()
+					.datetime()
+					.optional()
+					.describe("ISO 8601 timestamp — only return documents updated at or after this time"),
+				before: z
+					.string()
+					.datetime()
+					.optional()
+					.describe("ISO 8601 timestamp — only return documents updated before this time"),
 			},
 		},
-		async ({ query, limit, tag }) => {
+		async ({ query, limit, tag, since, before }) => {
 			const embedding = await embedder.embed(query);
-			const results = await repo.search({ embedding, limit, tag });
+			const results = await repo.search({ embedding, limit, tag, since, before });
 
 			if (results.length === 0) {
 				return {
@@ -229,16 +239,26 @@ function createServer(
 					.string()
 					.optional()
 					.describe("Restrict results to documents with this tag"),
+				since: z
+					.string()
+					.datetime()
+					.optional()
+					.describe("ISO 8601 timestamp — only return documents updated at or after this time"),
+				before: z
+					.string()
+					.datetime()
+					.optional()
+					.describe("ISO 8601 timestamp — only return documents updated before this time"),
 			},
 		},
-		async ({ question, extra_queries, limit, tag }) => {
+		async ({ question, extra_queries, limit, tag, since, before }) => {
 			const queries = [question, ...(extra_queries ?? [])];
 			const perQueryLimit = Math.min(20, (limit ?? 8) + 2);
 
 			const allResults = await Promise.all(
 				queries.map(async (q) => {
 					const embedding = await embedder.embed(q);
-					return repo.search({ embedding, limit: perQueryLimit, tag });
+					return repo.search({ embedding, limit: perQueryLimit, tag, since, before });
 				}),
 			);
 

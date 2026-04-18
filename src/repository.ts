@@ -50,12 +50,15 @@ export interface DocumentRepository {
 
 	/**
 	 * Return the top `limit` documents ranked by cosine similarity to the
-	 * provided query embedding, optionally filtered to a specific tag.
+	 * provided query embedding, optionally filtered to a specific tag or
+	 * time range (ISO 8601 strings compared against updatedAt).
 	 */
 	search(params: {
 		embedding: number[];
 		limit?: number;
 		tag?: string;
+		since?: string;
+		before?: string;
 	}): Promise<SearchResult[]>;
 
 	/** Retrieve a single document by ID. Returns null if not found. */
@@ -174,6 +177,8 @@ export class SqliteDocumentRepository implements DocumentRepository {
 		embedding: number[];
 		limit?: number;
 		tag?: string;
+		since?: string;
+		before?: string;
 	}): Promise<SearchResult[]> {
 		const limit = params.limit ?? 5;
 
@@ -199,6 +204,9 @@ export class SqliteDocumentRepository implements DocumentRepository {
 				const tags = JSON.parse(row.tags) as string[];
 				if (!tags.includes(params.tag)) continue;
 			}
+
+			if (params.since && row.updatedAt < params.since) continue;
+			if (params.before && row.updatedAt >= params.before) continue;
 
 			const rowEmbedding = bufferToEmbedding(row.embedding as Buffer | null);
 			if (!rowEmbedding) continue;
