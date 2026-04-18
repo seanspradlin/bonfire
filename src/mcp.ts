@@ -3,6 +3,7 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { z } from "zod";
 import type { EmbeddingProvider } from "./embeddings";
 import type { DocumentRepository } from "./repository";
+import type { VisionProvider } from "./vision";
 
 // ---------------------------------------------------------------------------
 // MCP server factory
@@ -11,6 +12,7 @@ import type { DocumentRepository } from "./repository";
 function createServer(
 	repo: DocumentRepository,
 	embedder: EmbeddingProvider,
+	vision: VisionProvider,
 ): McpServer {
 	const server = new McpServer({
 		name: "bonfire",
@@ -276,6 +278,89 @@ function createServer(
 	);
 
 	// -------------------------------------------------------------------------
+	// Tool: add_image
+	// -------------------------------------------------------------------------
+
+	server.registerTool(
+		"add_image",
+		{
+			title: "Add Image",
+			description:
+				"Analyze an image (photo of handwritten notes, whiteboard, diagram, etc.) " +
+				"and store the extracted content as a knowledge base document. " +
+				"The image is transcribed and described by an AI vision model before storage.",
+			inputSchema: {
+				image_data: z
+					.string()
+					.describe("Base64-encoded image data (without the data URI prefix)"),
+				media_type: z
+					.enum(["image/jpeg", "image/png", "image/gif", "image/webp"])
+					.describe("MIME type of the image"),
+				title: z
+					.string()
+					.optional()
+					.describe(
+						"Title for the document — if omitted, one is generated from the image content",
+					),
+				tags: z
+					.array(z.string())
+					.optional()
+					.describe(
+						"Tags for categorisation — if omitted, tags are generated automatically " +
+							"from the image content and title (e.g. ['meeting-notes', 'q2-planning'])",
+					),
+				id: z
+					.string()
+					.optional()
+					.describe("Document ID — omit to create a new document"),
+				context: z
+					.string()
+					.optional()
+					.describe(
+						"Optional hint about the image content to guide analysis " +
+							"(e.g. 'whiteboard from sprint planning meeting on 2026-04-17')",
+					),
+			},
+		},
+		async ({ image_data, media_type, title, tags, id, context }) => {
+			const result = await vision.analyzeImage(
+				{ data: image_data, mediaType: media_type },
+				{ title, context },
+			);
+
+			const resolvedTitle = title ?? result.title;
+			const resolvedTags = tags ?? result.tags;
+			const embedding = await embedder.embed(`${resolvedTitle}\n\n${result.content}`);
+			const doc = await repo.upsert({
+				id,
+				title: resolvedTitle,
+				content: result.content,
+				tags: resolvedTags,
+				embedding,
+			});
+
+			return {
+				content: [
+					{
+						type: "text",
+						text: JSON.stringify(
+							{
+								id: doc.id,
+								title: doc.title,
+								tags: doc.tags,
+								createdAt: doc.createdAt,
+								updatedAt: doc.updatedAt,
+							},
+							null,
+							2,
+						),
+					},
+				],
+			};
+		},
+	);
+
+	// -------------------------------------------------------------------------
 	// Tool: delete_document
 	// -------------------------------------------------------------------------
 
@@ -319,6 +404,7 @@ function createServer(
 export function createMcpHandler(
 	repo: DocumentRepository,
 	embedder: EmbeddingProvider,
+	vision: VisionProvider,
 ) {
 	const sessions = new Map<string, WebStandardStreamableHTTPServerTransport>();
 
@@ -358,7 +444,7 @@ export function createMcpHandler(
 			},
 		});
 
-		const server = createServer(repo, embedder);
+		const server = createServer(repo, embedder, vision);
 		await server.connect(transport);
 
 		return transport.handleRequest(req);

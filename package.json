@@ -20,6 +20,7 @@
 	"author": "Sean Spradlin",
 	"license": "MIT",
 	"dependencies": {
+		"@anthropic-ai/sdk": "^0.90.0",
 		"@modelcontextprotocol/sdk": "^1.29.0",
 		"drizzle-orm": "^0.45.2",
 		"hono": "^4.12.12",

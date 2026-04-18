@@ -245,7 +245,7 @@ export class SqliteDocumentRepository implements DocumentRepository {
 		const docs = rows.map(rowToDocument);
 
 		if (params?.tag) {
-			return docs.filter((d) => d.tags.includes(params.tag!));
+			return docs.filter((d) => d.tags.includes(params.tag as string));
 		}
 
 		return docs;
