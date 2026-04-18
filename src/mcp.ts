@@ -191,6 +191,91 @@ function createServer(
 	);
 
 	// -------------------------------------------------------------------------
+	// Tool: query_knowledge_base
+	// -------------------------------------------------------------------------
+
+	server.registerTool(
+		"query_knowledge_base",
+		{
+			title: "Query Knowledge Base",
+			description:
+				"Answer a question by retrieving and synthesizing the most relevant documents " +
+				"from the knowledge base. Runs multiple semantic searches in parallel (using the " +
+				"question plus any extra queries you provide), deduplicates results, and returns " +
+				"the top documents ranked by relevance. Use this instead of search_documents when " +
+				"you need a comprehensive answer that may span several documents.",
+			inputSchema: {
+				question: z
+					.string()
+					.describe("The question or topic to look up in the knowledge base"),
+				extra_queries: z
+					.array(z.string())
+					.max(4)
+					.optional()
+					.describe(
+						"Up to 4 additional search queries to broaden retrieval — useful when " +
+							"the question may be answered by documents using different terminology",
+					),
+				limit: z
+					.number()
+					.int()
+					.min(1)
+					.max(20)
+					.optional()
+					.describe("Maximum number of documents to return after merging (default: 8)"),
+				tag: z
+					.string()
+					.optional()
+					.describe("Restrict results to documents with this tag"),
+			},
+		},
+		async ({ question, extra_queries, limit, tag }) => {
+			const queries = [question, ...(extra_queries ?? [])];
+			const perQueryLimit = Math.min(20, (limit ?? 8) + 2);
+
+			const allResults = await Promise.all(
+				queries.map(async (q) => {
+					const embedding = await embedder.embed(q);
+					return repo.search({ embedding, limit: perQueryLimit, tag });
+				}),
+			);
+
+			// Deduplicate by ID, keeping the highest similarity score seen
+			const best = new Map<string, (typeof allResults)[0][0]>();
+			for (const results of allResults) {
+				for (const doc of results) {
+					const existing = best.get(doc.id);
+					if (!existing || doc.similarity > existing.similarity) {
+						best.set(doc.id, doc);
+					}
+				}
+			}
+
+			const merged = Array.from(best.values())
+				.sort((a, b) => b.similarity - a.similarity)
+				.slice(0, limit ?? 8);
+
+			if (merged.length === 0) {
+				return {
+					content: [{ type: "text", text: "No relevant documents found." }],
+				};
+			}
+
+			const formatted = merged.map((r) => ({
+				id: r.id,
+				title: r.title,
+				tags: r.tags,
+				similarity: Math.round(r.similarity * 1000) / 1000,
+				content: r.content,
+			}));
+
+			return {
+				content: [{ type: "text", text: JSON.stringify(formatted, null, 2) }],
+			};
+		},
+	);
+
+	// -------------------------------------------------------------------------
 	// Tool: delete_document
 	// -------------------------------------------------------------------------
 
