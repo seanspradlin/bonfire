@@ -1,7 +1,9 @@
+import Anthropic from "@anthropic-ai/sdk";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
 import type { EmbeddingProvider } from "./embeddings";
+import type { PdfProvider } from "./pdf";
 import type { DocumentRepository } from "./repository";
 import type { VisionProvider } from "./vision";
 
@@ -9,11 +11,19 @@ import type { VisionProvider } from "./vision";
 // MCP server factory
 // ---------------------------------------------------------------------------
 
-function createServer(
-	repo: DocumentRepository,
-	embedder: EmbeddingProvider,
-	vision: VisionProvider,
-): McpServer {
+interface ServerDeps {
+	repo: DocumentRepository;
+	embedder: EmbeddingProvider;
+	vision: VisionProvider;
+	pdfProvider: PdfProvider;
+}
+
+function createServer({
+	repo,
+	embedder,
+	vision,
+	pdfProvider,
+}: ServerDeps): McpServer {
 	const server = new McpServer({
 		name: "bonfire",
 		version: "0.1.0",
@@ -104,17 +114,27 @@ function createServer(
 					.string()
 					.datetime()
 					.optional()
-					.describe("ISO 8601 timestamp — only return documents updated at or after this time"),
+					.describe(
+						"ISO 8601 timestamp — only return documents updated at or after this time",
+					),
 				before: z
 					.string()
 					.datetime()
 					.optional()
-					.describe("ISO 8601 timestamp — only return documents updated before this time"),
+					.describe(
+						"ISO 8601 timestamp — only return documents updated before this time",
+					),
 			},
 		},
 		async ({ query, limit, tag, since, before }) => {
 			const embedding = await embedder.embed(query);
-			const results = await repo.search({ embedding, limit, tag, since, before });
+			const results = await repo.search({
+				embedding,
+				limit,
+				tag,
+				since,
+				before,
+			});
 
 			if (results.length === 0) {
 				return {
@@ -234,7 +254,9 @@ function createServer(
 					.min(1)
 					.max(20)
 					.optional()
-					.describe("Maximum number of documents to return after merging (default: 8)"),
+					.describe(
+						"Maximum number of documents to return after merging (default: 8)",
+					),
 				tag: z
 					.string()
 					.optional()
@@ -243,12 +265,16 @@ function createServer(
 					.string()
 					.datetime()
 					.optional()
-					.describe("ISO 8601 timestamp — only return documents updated at or after this time"),
+					.describe(
+						"ISO 8601 timestamp — only return documents updated at or after this time",
+					),
 				before: z
 					.string()
 					.datetime()
 					.optional()
-					.describe("ISO 8601 timestamp — only return documents updated before this time"),
+					.describe(
+						"ISO 8601 timestamp — only return documents updated before this time",
+					),
 			},
 		},
 		async ({ question, extra_queries, limit, tag, since, before }) => {
@@ -258,7 +284,13 @@ function createServer(
 			const allResults = await Promise.all(
 				queries.map(async (q) => {
 					const embedding = await embedder.embed(q);
-					return repo.search({ embedding, limit: perQueryLimit, tag, since, before });
+					return repo.search({
+						embedding,
+						limit: perQueryLimit,
+						tag,
+						since,
+						before,
+					});
 				}),
 			);
 
@@ -350,7 +382,109 @@ function createServer(
 
 			const resolvedTitle = title ?? result.title;
 			const resolvedTags = tags ?? result.tags;
-			const embedding = await embedder.embed(`${resolvedTitle}\n\n${result.content}`);
+			const embedding = await embedder.embed(
+				`${resolvedTitle}\n\n${result.content}`,
+			);
+			const doc = await repo.upsert({
+				id,
+				title: resolvedTitle,
+				content: result.content,
+				tags: resolvedTags,
+				embedding,
+			});
+
+			return {
+				content: [
+					{
+						type: "text",
+						text: JSON.stringify(
+							{
+								id: doc.id,
+								title: doc.title,
+								tags: doc.tags,
+								createdAt: doc.createdAt,
+								updatedAt: doc.updatedAt,
+							},
+							null,
+							2,
+						),
+					},
+				],
+			};
+		},
+	);
+
+	// -------------------------------------------------------------------------
+	// Tool: add_pdf
+	// -------------------------------------------------------------------------
+
+	server.registerTool(
+		"add_pdf",
+		{
+			title: "Add PDF",
+			description:
+				"Extract content from a PDF document and store it as a knowledge base document. " +
+				"The PDF is parsed and structured into markdown by an AI model before storage.",
+			inputSchema: {
+				pdf_data: z
+					.string()
+					.describe("Base64-encoded PDF data (without the data URI prefix)"),
+				title: z
+					.string()
+					.optional()
+					.describe(
+						"Title for the document — if omitted, one is generated from the PDF content",
+					),
+				tags: z
+					.array(z.string())
+					.optional()
+					.describe(
+						"Tags for categorisation — if omitted, tags are generated automatically " +
+							"from the PDF content (e.g. ['meeting-notes', 'q2-planning'])",
+					),
+				id: z
+					.string()
+					.optional()
+					.describe("Document ID — omit to create a new document"),
+				context: z
+					.string()
+					.optional()
+					.describe(
+						"Optional hint about the PDF content to guide extraction " +
+							"(e.g. 'Q2 2026 board meeting agenda')",
+					),
+			},
+		},
+		async ({ pdf_data, title, tags, id, context }) => {
+			let result: Awaited<ReturnType<typeof pdfProvider.analyzePdf>>;
+			try {
+				result = await pdfProvider.analyzePdf(
+					{ data: pdf_data },
+					{ title, context },
+				);
+			} catch (err) {
+				if (
+					err instanceof Anthropic.BadRequestError &&
+					String(err.message).includes("prompt is too long")
+				) {
+					return {
+						content: [
+							{
+								type: "text",
+								text: "PDF is too large to process. Try a smaller or fewer-page document.",
+							},
+						],
+						isError: true,
+					};
+				}
+				throw err;
+			}
+
+			const resolvedTitle = title ?? result.title;
+			const resolvedTags = tags ?? result.tags;
+			const embedding = await embedder.embed(
+				`${resolvedTitle}\n\n${result.content}`,
+			);
 			const doc = await repo.upsert({
 				id,
 				title: resolvedTitle,
@@ -421,11 +555,7 @@ function createServer(
  * Each connecting client gets its own transport and McpServer instance,
  * sharing the same underlying repository and embedding provider.
  */
-export function createMcpHandler(
-	repo: DocumentRepository,
-	embedder: EmbeddingProvider,
-	vision: VisionProvider,
-) {
+export function createMcpHandler(deps: ServerDeps) {
 	const sessions = new Map<string, WebStandardStreamableHTTPServerTransport>();
 
 	return async (req: Request): Promise<Response> => {
@@ -464,7 +594,7 @@ export function createMcpHandler(
 			},
 		});
 
-		const server = createServer(repo, embedder, vision);
+		const server = createServer(deps);
 		await server.connect(transport);
 
 		return transport.handleRequest(req);

@@ -1,48 +1,46 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-export interface ImageInput {
+export interface PdfInput {
 	data: string;
-	mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 }
 
-export interface VisionResult {
+export interface PdfResult {
 	title: string;
 	content: string;
 	tags: string[];
 }
 
-export interface ImageContext {
+export interface PdfContext {
 	context?: string;
 	title?: string;
-	description?: string;
 }
 
-export interface VisionProvider {
-	analyzeImage(image: ImageInput, ctx?: ImageContext): Promise<VisionResult>;
+export interface PdfProvider {
+	analyzePdf(pdf: PdfInput, ctx?: PdfContext): Promise<PdfResult>;
 }
 
-const SYSTEM_PROMPT = `You are an assistant that transcribes and describes images for a team knowledge base.
+const SYSTEM_PROMPT = `You are an assistant that extracts and structures content from PDF documents for a team knowledge base.
 
-Given an image, return a JSON object with three fields:
+Given a PDF, return a JSON object with three fields:
 - "title": a short, descriptive title (under 80 characters)
-- "content": full markdown transcription/description of the image
-- "tags": an array of lowercase, hyphenated tags derived from the image content and any provided title/description (e.g. ["architecture", "whiteboard", "great-big-game-show"])
+- "content": full markdown representation of the document's content
+- "tags": an array of lowercase, hyphenated tags derived from the document content (e.g. ["architecture", "meeting-notes", "q2-planning"])
 
 Guidelines for content:
-- Transcribe all visible text exactly as written, preserving structure
-- Describe diagrams, charts, and drawings clearly
+- Preserve all meaningful text, headings, lists, and tables
 - Use markdown headings, lists, and tables where they improve readability
-- For whiteboards or handwritten notes, preserve the logical structure even if the layout is freeform
+- Omit headers, footers, and page numbers unless they contain meaningful content
+- For multi-section documents, use markdown headings to reflect the document structure
 
 Guidelines for tags:
-- Extract meaningful nouns, topics, and proper nouns from image content AND from the provided title/description
+- Extract meaningful nouns, topics, and proper nouns from the document
 - Use lowercase and hyphens (no spaces, no special characters)
 - Aim for 3–8 tags that would help someone find this document later
 - Include project names, people, technologies, document types, and topics
 
 Respond with only the JSON object, no other text.`;
 
-class AnthropicVisionProvider implements VisionProvider {
+class AnthropicPdfProvider implements PdfProvider {
 	private client: Anthropic;
 	private model: string;
 
@@ -51,30 +49,26 @@ class AnthropicVisionProvider implements VisionProvider {
 		this.model = model;
 	}
 
-	async analyzeImage(
-		image: ImageInput,
-		ctx?: ImageContext,
-	): Promise<VisionResult> {
-		const parts: string[] = ["Analyze this image."];
+	async analyzePdf(pdf: PdfInput, ctx?: PdfContext): Promise<PdfResult> {
+		const parts: string[] = ["Analyze this PDF document."];
 		if (ctx?.title) parts.push(`Title: ${ctx.title}`);
-		if (ctx?.description) parts.push(`Description: ${ctx.description}`);
 		if (ctx?.context) parts.push(`Additional context: ${ctx.context}`);
 		const userText = parts.join(" ");
 
 		const response = await this.client.messages.create({
 			model: this.model,
-			max_tokens: 2048,
+			max_tokens: 8192,
 			system: SYSTEM_PROMPT,
 			messages: [
 				{
 					role: "user",
 					content: [
 						{
-							type: "image",
+							type: "document",
 							source: {
 								type: "base64",
-								media_type: image.mediaType,
-								data: image.data,
+								media_type: "application/pdf",
+								data: pdf.data,
 							},
 						},
 						{ type: "text", text: userText },
@@ -109,20 +103,20 @@ class AnthropicVisionProvider implements VisionProvider {
 			return { title: parsed.title, content: parsed.content, tags };
 		} catch {
 			return {
-				title: "Image Analysis",
-				content: text || "No content extracted from image.",
+				title: "PDF Document",
+				content: text || "No content extracted from PDF.",
 				tags: [],
 			};
 		}
 	}
 }
 
-export function createVisionProvider(): VisionProvider {
+export function createPdfProvider(): PdfProvider {
 	const apiKey = process.env.ANTHROPIC_API_KEY;
 	if (!apiKey) {
 		throw new Error(
-			"ANTHROPIC_API_KEY environment variable is required for image analysis.",
+			"ANTHROPIC_API_KEY environment variable is required for PDF analysis.",
 		);
 	}
-	return new AnthropicVisionProvider(apiKey);
+	return new AnthropicPdfProvider(apiKey);
 }

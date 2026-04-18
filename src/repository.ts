@@ -198,6 +198,8 @@ export class SqliteDocumentRepository implements DocumentRepository {
 			.where(sql`${documents.embedding} IS NOT NULL`);
 
 		const results: SearchResult[] = [];
+		const sinceMs = params.since ? Date.parse(params.since) : undefined;
+		const beforeMs = params.before ? Date.parse(params.before) : undefined;
 
 		for (const row of rows) {
 			if (params.tag) {
@@ -205,8 +207,11 @@ export class SqliteDocumentRepository implements DocumentRepository {
 				if (!tags.includes(params.tag)) continue;
 			}
 
-			if (params.since && row.updatedAt < params.since) continue;
-			if (params.before && row.updatedAt >= params.before) continue;
+			if (sinceMs !== undefined || beforeMs !== undefined) {
+				const rowMs = Date.parse(row.updatedAt);
+				if (sinceMs !== undefined && rowMs < sinceMs) continue;
+				if (beforeMs !== undefined && rowMs >= beforeMs) continue;
+			}
 
 			const rowEmbedding = bufferToEmbedding(row.embedding as Buffer | null);
 			if (!rowEmbedding) continue;
