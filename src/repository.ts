@@ -24,6 +24,7 @@ export interface Document {
 	tags: string[];
 	createdAt: string;
 	updatedAt: string;
+	date: string | null;
 }
 
 export interface SearchResult extends Document {
@@ -45,13 +46,15 @@ export interface DocumentRepository {
 		title: string;
 		content: string;
 		tags?: string[];
+		date?: string;
 		embedding: number[];
 	}): Promise<Document>;
 
 	/**
 	 * Return the top `limit` documents ranked by cosine similarity to the
 	 * provided query embedding, optionally filtered to a specific tag or
-	 * time range (ISO 8601 strings compared against updatedAt).
+	 * time range (ISO 8601 strings compared against the document's `date` field,
+	 * falling back to `createdAt` when `date` is unset).
 	 */
 	search(params: {
 		embedding: number[];
@@ -100,6 +103,7 @@ function rowToDocument(row: {
 	tags: string;
 	createdAt: string;
 	updatedAt: string;
+	date: string | null;
 }): Document {
 	return {
 		id: row.id,
@@ -108,6 +112,7 @@ function rowToDocument(row: {
 		tags: JSON.parse(row.tags) as string[],
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
+		date: row.date,
 	};
 }
 
@@ -134,6 +139,7 @@ export class SqliteDocumentRepository implements DocumentRepository {
 		title: string;
 		content: string;
 		tags?: string[];
+		date?: string;
 		embedding: number[];
 	}): Promise<Document> {
 		const now = new Date().toISOString();
@@ -141,7 +147,7 @@ export class SqliteDocumentRepository implements DocumentRepository {
 		const tagsJson = JSON.stringify(params.tags ?? []);
 		const embeddingBuf = embeddingToBuffer(params.embedding);
 
-		await db
+		const [row] = await db
 			.insert(documents)
 			.values({
 				id,
@@ -151,6 +157,7 @@ export class SqliteDocumentRepository implements DocumentRepository {
 				embedding: embeddingBuf,
 				createdAt: now,
 				updatedAt: now,
+				date: params.date ?? null,
 			})
 			.onConflictDoUpdate({
 				target: documents.id,
@@ -160,7 +167,14 @@ export class SqliteDocumentRepository implements DocumentRepository {
 					tags: tagsJson,
 					embedding: embeddingBuf,
 					updatedAt: now,
+					// Preserve existing date when caller omits it on update
+					date:
+						params.date !== undefined ? params.date : sql`${documents.date}`,
 				},
+			})
+			.returning({
+				createdAt: documents.createdAt,
+				date: documents.date,
 			});
 
 		return {
@@ -168,8 +182,9 @@ export class SqliteDocumentRepository implements DocumentRepository {
 			title: params.title,
 			content: params.content,
 			tags: params.tags ?? [],
-			createdAt: now,
+			createdAt: row.createdAt,
 			updatedAt: now,
+			date: row.date,
 		};
 	}
 
@@ -193,6 +208,7 @@ export class SqliteDocumentRepository implements DocumentRepository {
 				embedding: documents.embedding,
 				createdAt: documents.createdAt,
 				updatedAt: documents.updatedAt,
+				date: documents.date,
 			})
 			.from(documents)
 			.where(sql`${documents.embedding} IS NOT NULL`);
@@ -208,7 +224,7 @@ export class SqliteDocumentRepository implements DocumentRepository {
 			}
 
 			if (sinceMs !== undefined || beforeMs !== undefined) {
-				const rowMs = Date.parse(row.updatedAt);
+				const rowMs = Date.parse(row.date ?? row.createdAt);
 				if (sinceMs !== undefined && rowMs < sinceMs) continue;
 				if (beforeMs !== undefined && rowMs >= beforeMs) continue;
 			}
@@ -232,6 +248,7 @@ export class SqliteDocumentRepository implements DocumentRepository {
 				tags: documents.tags,
 				createdAt: documents.createdAt,
 				updatedAt: documents.updatedAt,
+				date: documents.date,
 			})
 			.from(documents)
 			.where(eq(documents.id, id))
@@ -252,6 +269,7 @@ export class SqliteDocumentRepository implements DocumentRepository {
 				tags: documents.tags,
 				createdAt: documents.createdAt,
 				updatedAt: documents.updatedAt,
+				date: documents.date,
 			})
 			.from(documents);
 

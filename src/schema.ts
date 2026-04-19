@@ -26,6 +26,8 @@ export const documents = sqliteTable("documents", {
 	embedding: blob("embedding"),
 	createdAt: text("created_at").notNull(),
 	updatedAt: text("updated_at").notNull(),
+	/** Caller-supplied ISO 8601 date representing when the work occurred (e.g. PR merge date). */
+	date: text("date"),
 });
 
 export type DocumentRow = typeof documents.$inferSelect;

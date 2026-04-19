@@ -51,15 +51,30 @@ function createServer({
 					.describe(
 						"Tags for categorisation and filtering (e.g. ['marketing', 'hubspot'])",
 					),
+				date: z
+					.string()
+					.datetime()
+					.optional()
+					.describe(
+						"ISO 8601 date representing when the work occurred (e.g. PR merge date). " +
+							"Used for temporal filtering — independent of when this document was ingested.",
+					),
 				id: z
 					.string()
 					.optional()
 					.describe("Document ID — omit to create a new document"),
 			},
 		},
-		async ({ title, content, tags, id }) => {
+		async ({ title, content, tags, date, id }) => {
 			const embedding = await embedder.embed(`${title}\n\n${content}`);
-			const doc = await repo.upsert({ id, title, content, tags, embedding });
+			const doc = await repo.upsert({
+				id,
+				title,
+				content,
+				tags,
+				date,
+				embedding,
+			});
 
 			return {
 				content: [
@@ -70,6 +85,7 @@ function createServer({
 								id: doc.id,
 								title: doc.title,
 								tags: doc.tags,
+								date: doc.date,
 								createdAt: doc.createdAt,
 								updatedAt: doc.updatedAt,
 							},
@@ -115,14 +131,14 @@ function createServer({
 					.datetime()
 					.optional()
 					.describe(
-						"ISO 8601 timestamp — only return documents updated at or after this time",
+						"ISO 8601 timestamp — only return documents whose date (or createdAt if date is unset) is at or after this time",
 					),
 				before: z
 					.string()
 					.datetime()
 					.optional()
 					.describe(
-						"ISO 8601 timestamp — only return documents updated before this time",
+						"ISO 8601 timestamp — only return documents whose date (or createdAt if date is unset) is before this time",
 					),
 			},
 		},
@@ -213,6 +229,7 @@ function createServer({
 				id: d.id,
 				title: d.title,
 				tags: d.tags,
+				date: d.date,
 				updatedAt: d.updatedAt,
 			}));
 
@@ -266,14 +283,14 @@ function createServer({
 					.datetime()
 					.optional()
 					.describe(
-						"ISO 8601 timestamp — only return documents updated at or after this time",
+						"ISO 8601 timestamp — only return documents whose date (or createdAt if date is unset) is at or after this time",
 					),
 				before: z
 					.string()
 					.datetime()
 					.optional()
 					.describe(
-						"ISO 8601 timestamp — only return documents updated before this time",
+						"ISO 8601 timestamp — only return documents whose date (or createdAt if date is unset) is before this time",
 					),
 			},
 		},
@@ -372,9 +389,17 @@ function createServer({
 						"Optional hint about the image content to guide analysis " +
 							"(e.g. 'whiteboard from sprint planning meeting on 2026-04-17')",
 					),
+				date: z
+					.string()
+					.datetime()
+					.optional()
+					.describe(
+						"ISO 8601 date representing when the work occurred. " +
+							"Used for temporal filtering — independent of when this document was ingested.",
+					),
 			},
 		},
-		async ({ image_data, media_type, title, tags, id, context }) => {
+		async ({ image_data, media_type, title, tags, id, context, date }) => {
 			const result = await vision.analyzeImage(
 				{ data: image_data, mediaType: media_type },
 				{ title, context },
@@ -390,6 +415,7 @@ function createServer({
 				title: resolvedTitle,
 				content: result.content,
 				tags: resolvedTags,
+				date,
 				embedding,
 			});
 
@@ -402,6 +428,7 @@ function createServer({
 								id: doc.id,
 								title: doc.title,
 								tags: doc.tags,
+								date: doc.date,
 								createdAt: doc.createdAt,
 								updatedAt: doc.updatedAt,
 							},
@@ -453,9 +480,17 @@ function createServer({
 						"Optional hint about the PDF content to guide extraction " +
 							"(e.g. 'Q2 2026 board meeting agenda')",
 					),
+				date: z
+					.string()
+					.datetime()
+					.optional()
+					.describe(
+						"ISO 8601 date representing when the work occurred. " +
+							"Used for temporal filtering — independent of when this document was ingested.",
+					),
 			},
 		},
-		async ({ pdf_data, title, tags, id, context }) => {
+		async ({ pdf_data, title, tags, id, context, date }) => {
 			let result: Awaited<ReturnType<typeof pdfProvider.analyzePdf>>;
 			try {
 				result = await pdfProvider.analyzePdf(
@@ -490,6 +525,7 @@ function createServer({
 				title: resolvedTitle,
 				content: result.content,
 				tags: resolvedTags,
+				date,
 				embedding,
 			});
 
@@ -502,6 +538,7 @@ function createServer({
 								id: doc.id,
 								title: doc.title,
 								tags: doc.tags,
+								date: doc.date,
 								createdAt: doc.createdAt,
 								updatedAt: doc.updatedAt,
 							},

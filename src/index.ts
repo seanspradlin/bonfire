@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { Hono } from "hono";
+import { z } from "zod";
 import { createEmbeddingProvider } from "./embeddings";
 import { createMcpHandler } from "./mcp";
 import { createPdfProvider } from "./pdf";
@@ -22,6 +23,20 @@ const mcpHandler = createMcpHandler({ repo, embedder, vision, pdfProvider });
 
 const app = new Hono();
 
+const isoDatetime = z.string().datetime();
+
+/**
+ * Parse and validate an optional ISO 8601 datetime from a FormData field.
+ * Returns the normalized UTC string, undefined if absent, or null if invalid.
+ */
+function parseOptionalDate(formData: FormData): string | undefined | null {
+	const raw = formData.get("date");
+	if (!raw) return undefined;
+	const result = isoDatetime.safeParse(String(raw));
+	if (!result.success) return null;
+	return new Date(result.data).toISOString();
+}
+
 /** MCP Streamable HTTP endpoint — handles all MCP protocol traffic */
 app.all("/mcp", (c) => mcpHandler(c.req.raw));
 
@@ -38,6 +53,7 @@ app.get("/health", (c) => c.json({ status: "ok", service: "bonfire" }));
  *   context  (optional) — hint to guide vision analysis
  *   title    (optional) — override the auto-generated title
  *   id       (optional) — document ID to upsert into
+ *   date     (optional) — ISO 8601 timestamp for when the work occurred
  */
 app.post("/upload/image", async (c) => {
 	let formData: FormData;
@@ -80,6 +96,13 @@ app.post("/upload/image", async (c) => {
 	const titleOverride = titleRaw ? String(titleRaw) : undefined;
 	const idRaw = formData.get("id");
 	const id = idRaw ? String(idRaw) : undefined;
+	const date = parseOptionalDate(formData);
+	if (date === null) {
+		return c.json(
+			{ error: "Invalid date: must be a valid ISO 8601 timestamp" },
+			400,
+		);
+	}
 
 	const arrayBuffer = await file.arrayBuffer();
 	const base64Data = Buffer.from(arrayBuffer).toString("base64");
@@ -98,6 +121,7 @@ app.post("/upload/image", async (c) => {
 		title: resolvedTitle,
 		content: result.content,
 		tags: resolvedTags,
+		date,
 		embedding,
 	});
 
@@ -106,6 +130,7 @@ app.post("/upload/image", async (c) => {
 			id: doc.id,
 			title: doc.title,
 			tags: doc.tags,
+			date: doc.date,
 			createdAt: doc.createdAt,
 			updatedAt: doc.updatedAt,
 		},
@@ -123,6 +148,7 @@ app.post("/upload/image", async (c) => {
  *   context  (optional) — hint to guide content extraction
  *   title    (optional) — override the auto-generated title
  *   id       (optional) — document ID to upsert into
+ *   date     (optional) — ISO 8601 timestamp for when the work occurred
  */
 app.post("/upload/pdf", async (c) => {
 	let formData: FormData;
@@ -164,6 +190,13 @@ app.post("/upload/pdf", async (c) => {
 	const titleOverride = titleRaw ? String(titleRaw) : undefined;
 	const idRaw = formData.get("id");
 	const id = idRaw ? String(idRaw) : undefined;
+	const date = parseOptionalDate(formData);
+	if (date === null) {
+		return c.json(
+			{ error: "Invalid date: must be a valid ISO 8601 timestamp" },
+			400,
+		);
+	}
 
 	const arrayBuffer = await file.arrayBuffer();
 	const base64Data = Buffer.from(arrayBuffer).toString("base64");
@@ -199,6 +232,7 @@ app.post("/upload/pdf", async (c) => {
 		title: resolvedTitle,
 		content: result.content,
 		tags: resolvedTags,
+		date,
 		embedding,
 	});
 
@@ -207,6 +241,7 @@ app.post("/upload/pdf", async (c) => {
 			id: doc.id,
 			title: doc.title,
 			tags: doc.tags,
+			date: doc.date,
 			createdAt: doc.createdAt,
 			updatedAt: doc.updatedAt,
 		},
