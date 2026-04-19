@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
 import type { EmbeddingProvider } from "./embeddings";
+import { ingestDocument } from "./ingestion";
 import type { PdfProvider } from "./pdf";
 import type { DocumentRepository } from "./repository";
 import type { VisionProvider } from "./vision";
@@ -61,20 +62,20 @@ function createServer({
 					),
 				id: z
 					.string()
+					.refine(
+						(v) => !v.includes(":chunk:"),
+						"id must not contain the reserved ':chunk:' namespace",
+					)
 					.optional()
 					.describe("Document ID — omit to create a new document"),
 			},
 		},
 		async ({ title, content, tags, date, id }) => {
-			const embedding = await embedder.embed(`${title}\n\n${content}`);
-			const doc = await repo.upsert({
-				id,
-				title,
-				content,
-				tags,
-				date,
-				embedding,
-			});
+			const doc = await ingestDocument(
+				{ id, title, content, tags, date },
+				repo,
+				embedder,
+			);
 
 			return {
 				content: [
@@ -160,7 +161,10 @@ function createServer({
 
 			const formatted = results.map((r) => ({
 				id: r.id,
-				title: r.title,
+				parentId: r.parentId,
+				// Strip the [i/N] suffix from chunk titles only — non-chunk documents
+				// may legitimately have titles matching that pattern.
+				title: r.parentId ? r.title.replace(/ \[\d+\/\d+\]$/, "") : r.title,
 				tags: r.tags,
 				similarity: Math.round(r.similarity * 1000) / 1000,
 				content: r.content,
@@ -334,7 +338,8 @@ function createServer({
 
 			const formatted = merged.map((r) => ({
 				id: r.id,
-				title: r.title,
+				parentId: r.parentId,
+				title: r.parentId ? r.title.replace(/ \[\d+\/\d+\]$/, "") : r.title,
 				tags: r.tags,
 				similarity: Math.round(r.similarity * 1000) / 1000,
 				content: r.content,
@@ -380,6 +385,10 @@ function createServer({
 					),
 				id: z
 					.string()
+					.refine(
+						(v) => !v.includes(":chunk:"),
+						"id must not contain the reserved ':chunk:' namespace",
+					)
 					.optional()
 					.describe("Document ID — omit to create a new document"),
 				context: z
@@ -407,17 +416,17 @@ function createServer({
 
 			const resolvedTitle = title ?? result.title;
 			const resolvedTags = tags ?? result.tags;
-			const embedding = await embedder.embed(
-				`${resolvedTitle}\n\n${result.content}`,
+			const doc = await ingestDocument(
+				{
+					id,
+					title: resolvedTitle,
+					content: result.content,
+					tags: resolvedTags,
+					date,
+				},
+				repo,
+				embedder,
 			);
-			const doc = await repo.upsert({
-				id,
-				title: resolvedTitle,
-				content: result.content,
-				tags: resolvedTags,
-				date,
-				embedding,
-			});
 
 			return {
 				content: [
@@ -471,6 +480,10 @@ function createServer({
 					),
 				id: z
 					.string()
+					.refine(
+						(v) => !v.includes(":chunk:"),
+						"id must not contain the reserved ':chunk:' namespace",
+					)
 					.optional()
 					.describe("Document ID — omit to create a new document"),
 				context: z
@@ -517,17 +530,17 @@ function createServer({
 
 			const resolvedTitle = title ?? result.title;
 			const resolvedTags = tags ?? result.tags;
-			const embedding = await embedder.embed(
-				`${resolvedTitle}\n\n${result.content}`,
+			const doc = await ingestDocument(
+				{
+					id,
+					title: resolvedTitle,
+					content: result.content,
+					tags: resolvedTags,
+					date,
+				},
+				repo,
+				embedder,
 			);
-			const doc = await repo.upsert({
-				id,
-				title: resolvedTitle,
-				content: result.content,
-				tags: resolvedTags,
-				date,
-				embedding,
-			});
 
 			return {
 				content: [

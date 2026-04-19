@@ -16,6 +16,12 @@ export const EMBEDDING_DIMENSIONS = 1536;
 export interface EmbeddingProvider {
 	/** Generate an embedding vector for the given text. */
 	embed(text: string): Promise<number[]>;
+
+	/**
+	 * Generate embedding vectors for multiple texts in a single API call.
+	 * Prefer this over calling `embed` in a loop — it's faster and cheaper.
+	 */
+	embedBatch(texts: string[]): Promise<number[][]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -38,6 +44,17 @@ class OpenAIEmbeddingProvider implements EmbeddingProvider {
 			dimensions: EMBEDDING_DIMENSIONS,
 		});
 		return response.data[0].embedding;
+	}
+
+	async embedBatch(texts: string[]): Promise<number[][]> {
+		if (texts.length === 0) return [];
+		const response = await this.client.embeddings.create({
+			model: this.model,
+			input: texts,
+			dimensions: EMBEDDING_DIMENSIONS,
+		});
+		// OpenAI guarantees results are ordered by index
+		return response.data.map((d) => d.embedding);
 	}
 }
 

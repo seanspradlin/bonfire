@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { Hono } from "hono";
 import { z } from "zod";
 import { createEmbeddingProvider } from "./embeddings";
+import { ingestDocument } from "./ingestion";
 import { createMcpHandler } from "./mcp";
 import { createPdfProvider } from "./pdf";
 import { SqliteDocumentRepository } from "./repository";
@@ -24,6 +25,19 @@ const mcpHandler = createMcpHandler({ repo, embedder, vision, pdfProvider });
 const app = new Hono();
 
 const isoDatetime = z.string().datetime();
+
+/**
+ * Validate an optional document ID string.
+ * Returns the id if valid, undefined if absent, or null if it is invalid.
+ * The only reserved pattern is ':chunk:' — the internal namespace used for
+ * chunk IDs. All other ID formats are accepted.
+ */
+function parseOptionalId(formData: FormData): string | undefined | null {
+	const raw = formData.get("id");
+	if (!raw) return undefined;
+	const id = String(raw);
+	return id.includes(":chunk:") ? null : id;
+}
 
 /**
  * Parse and validate an optional ISO 8601 datetime from a FormData field.
@@ -94,8 +108,15 @@ app.post("/upload/image", async (c) => {
 	const context = contextRaw ? String(contextRaw) : undefined;
 	const titleRaw = formData.get("title");
 	const titleOverride = titleRaw ? String(titleRaw) : undefined;
-	const idRaw = formData.get("id");
-	const id = idRaw ? String(idRaw) : undefined;
+	const id = parseOptionalId(formData);
+	if (id === null) {
+		return c.json(
+			{
+				error: "Invalid id: must not contain the reserved ':chunk:' namespace",
+			},
+			400,
+		);
+	}
 	const date = parseOptionalDate(formData);
 	if (date === null) {
 		return c.json(
@@ -113,17 +134,17 @@ app.post("/upload/image", async (c) => {
 	);
 	const resolvedTitle = titleOverride ?? result.title;
 	const resolvedTags = tags ?? result.tags;
-	const embedding = await embedder.embed(
-		`${resolvedTitle}\n\n${result.content}`,
+	const doc = await ingestDocument(
+		{
+			id,
+			title: resolvedTitle,
+			content: result.content,
+			tags: resolvedTags,
+			date,
+		},
+		repo,
+		embedder,
 	);
-	const doc = await repo.upsert({
-		id,
-		title: resolvedTitle,
-		content: result.content,
-		tags: resolvedTags,
-		date,
-		embedding,
-	});
 
 	return c.json(
 		{
@@ -188,8 +209,15 @@ app.post("/upload/pdf", async (c) => {
 	const context = contextRaw ? String(contextRaw) : undefined;
 	const titleRaw = formData.get("title");
 	const titleOverride = titleRaw ? String(titleRaw) : undefined;
-	const idRaw = formData.get("id");
-	const id = idRaw ? String(idRaw) : undefined;
+	const id = parseOptionalId(formData);
+	if (id === null) {
+		return c.json(
+			{
+				error: "Invalid id: must not contain the reserved ':chunk:' namespace",
+			},
+			400,
+		);
+	}
 	const date = parseOptionalDate(formData);
 	if (date === null) {
 		return c.json(
@@ -224,17 +252,17 @@ app.post("/upload/pdf", async (c) => {
 	}
 	const resolvedTitle = titleOverride ?? result.title;
 	const resolvedTags = tags ?? result.tags;
-	const embedding = await embedder.embed(
-		`${resolvedTitle}\n\n${result.content}`,
+	const doc = await ingestDocument(
+		{
+			id,
+			title: resolvedTitle,
+			content: result.content,
+			tags: resolvedTags,
+			date,
+		},
+		repo,
+		embedder,
 	);
-	const doc = await repo.upsert({
-		id,
-		title: resolvedTitle,
-		content: result.content,
-		tags: resolvedTags,
-		date,
-		embedding,
-	});
 
 	return c.json(
 		{
