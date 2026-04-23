@@ -184,15 +184,16 @@ export function createChatRouter({ repo, embedder }: ChatDeps) {
 						draining = false;
 					}
 
-					const msgStream = client.messages.stream({
-						model: MODEL,
-						max_tokens: 2048,
-						system: SYSTEM_PROMPT,
-						tools: CHAT_TOOLS,
-						messages: history,
-						// Honour both client disconnect and idle timeout.
-						signal: combinedController.signal,
-					});
+					const msgStream = client.messages.stream(
+						{
+							model: MODEL,
+							max_tokens: 2048,
+							system: SYSTEM_PROMPT,
+							tools: CHAT_TOOLS,
+							messages: history,
+						},
+						{ signal: combinedController.signal },
+					);
 
 					msgStream.on("text", (delta) => {
 						resetIdleTimer();
