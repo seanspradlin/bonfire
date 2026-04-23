@@ -1,0 +1,1 @@
+ALTER TABLE "api_key" ADD COLUMN "key_hint" text DEFAULT '' NOT NULL;

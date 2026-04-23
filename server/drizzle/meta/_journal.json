@@ -1,0 +1,34 @@
+{
+	"version": "7",
+	"dialect": "postgresql",
+	"entries": [
+		{
+			"idx": 0,
+			"version": "7",
+			"when": 1776824108502,
+			"tag": "0000_flowery_magik",
+			"breakpoints": true
+		},
+		{
+			"idx": 1,
+			"version": "7",
+			"when": 1776894633735,
+			"tag": "0001_shocking_sunset_bain",
+			"breakpoints": true
+		},
+		{
+			"idx": 2,
+			"version": "7",
+			"when": 1776911183494,
+			"tag": "0002_majestic_bug",
+			"breakpoints": true
+		},
+		{
+			"idx": 3,
+			"version": "7",
+			"when": 1776997583494,
+			"tag": "0003_hnsw_embedding_index",
+			"breakpoints": true
+		}
+	]
+}
