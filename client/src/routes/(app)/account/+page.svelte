@@ -3,6 +3,7 @@
 	import Btn from '$lib/Btn.svelte';
 	import Icon from '$lib/Icon.svelte';
 	import IconBtn from '$lib/IconBtn.svelte';
+	import McpGuideModal from '$lib/McpGuideModal.svelte';
 	import PageHeader from '$lib/PageHeader.svelte';
 
 	// ---------------------------------------------------------------------------
@@ -86,6 +87,7 @@
 	let copyLabel = $state('Copy');
 	let generateLoading = $state(false);
 	let revokeError = $state('');
+	let showMcpGuide = $state(false);
 
 	function formatDate(iso: string): string {
 		return new Date(iso).toLocaleDateString('en-US', {
@@ -325,10 +327,38 @@
 			Access Tokens
 		</div>
 		<div class="p-6">
+			<McpGuideModal isOpen={showMcpGuide} onClose={() => (showMcpGuide = false)} />
+
 			<p class="mb-5 text-[13px] text-text-muted">
 				Generate tokens to authenticate the MCP server and other integrations. Tokens are shown once
 				— store them securely.
 			</p>
+
+			<!-- MCP connection guide banner -->
+			<div
+				class="mb-5 flex items-center justify-between gap-3 rounded-[10px] border-[1.5px] border-border bg-bg px-4 py-3.5"
+			>
+				<div class="flex min-w-0 items-center gap-3">
+					<div
+						class="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] text-accent"
+					>
+						<Icon name="settings" size={15} />
+					</div>
+					<div class="min-w-0">
+						<div class="mb-0.5 text-[13px] font-semibold text-text">Connect to the MCP server</div>
+						<div class="text-[12px] text-text-muted">
+							Setup instructions for Claude Code, Cursor, GitHub Copilot, and more
+						</div>
+					</div>
+				</div>
+				<button
+					type="button"
+					onclick={() => (showMcpGuide = true)}
+					class="shrink-0 cursor-pointer rounded-lg border-[1.5px] border-border bg-transparent px-4 py-[7px] text-[13px] font-semibold text-accent transition-colors duration-150 hover:bg-[color-mix(in_srgb,var(--accent)_5%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+				>
+					View guide →
+				</button>
+			</div>
 
 			<!-- Newly generated token reveal -->
 			{#if revealedToken}
