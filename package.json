@@ -1,0 +1,11 @@
+{
+	"name": "bonfire",
+	"version": "0.0.1",
+	"private": true,
+	"workspaces": ["client", "server"],
+	"scripts": {
+		"build": "bun run --cwd server build && bun run --cwd client build",
+		"start": "bun ./server/dist/index.js & bun ./client/build/index.js & wait",
+		"dev": "bun run --cwd server dev & bun run --cwd client dev & wait"
+	}
+}
