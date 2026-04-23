@@ -318,7 +318,7 @@ export class PgDocumentRepository implements DocumentRepository {
 		// Bind the embedding array as a parameterised value cast to vector.
 		// Using sql.param avoids raw string interpolation and lets the pg driver
 		// send it as a proper query parameter — safe and compatible with the HNSW index.
-		const queryVec = sql`${sql.param(params.embedding)}::vector`;
+		const queryVec = sql`${sql.param(JSON.stringify(params.embedding))}::vector`;
 
 		const dateExpr = sql`COALESCE(${documents.date}, ${documents.createdAt})`;
 
