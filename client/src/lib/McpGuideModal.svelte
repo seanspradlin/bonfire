@@ -38,21 +38,10 @@
 		claudecode: {
 			steps: [
 				'Generate an access token from the section below and copy it.',
-				'Open your Claude Code settings file (~/.claude/settings.json).',
-				'Add the MCP server config shown below.',
-				'Restart Claude Code — Bonfire will appear as a connected tool.'
+				'Run the command below in your terminal, replacing YOUR_TOKEN_HERE with your token.',
+				'Bonfire will appear as a connected MCP tool in Claude Code.'
 			],
-			code: `// ~/.claude/settings.json
-{
-  "mcpServers": {
-    "bonfire": {
-      "url": "${SERVER_URL}",
-      "headers": {
-        "Authorization": "Bearer YOUR_TOKEN_HERE"
-      }
-    }
-  }
-}`
+			code: `claude mcp add --transport http bonfire --scope user ${SERVER_URL} --header "Authorization: Bearer YOUR_TOKEN_HERE"`
 		},
 		cursor: {
 			steps: [
