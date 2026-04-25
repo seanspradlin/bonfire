@@ -19,6 +19,10 @@
 	// Mirrors the server's ALLOWED_IMAGE_MEDIA_TYPES — keep in sync to avoid
 	// queuing uploads the server will reject with 415.
 	const IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+	// Extension fallback for drag-and-drop on macOS/Chrome, where the system UTI for .md
+	// has no MIME mapping so file.type arrives as an empty string.
+	const TEXT_EXTENSIONS = new Set(['.md', '.txt']);
+	const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp']);
 
 	let dragging = $state(false);
 	let uploads = $state<UploadEntry[]>([]);
@@ -30,9 +34,17 @@
 		return (bytes / 1024 / 1024).toFixed(1) + ' MB';
 	}
 
+	function extOf(file: File): string {
+		return file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+	}
+
 	function fileKind(file: File): FileKind {
 		if (IMAGE_MIME_TYPES.has(file.type)) return 'image';
 		if (TEXT_MIME_TYPES.has(file.type)) return 'text';
+		if (file.type === 'application/pdf') return 'pdf';
+		const ext = extOf(file);
+		if (TEXT_EXTENSIONS.has(ext)) return 'text';
+		if (IMAGE_EXTENSIONS.has(ext)) return 'image';
 		return 'pdf';
 	}
 
@@ -43,11 +55,14 @@
 	}
 
 	function isAccepted(file: File): boolean {
-		return (
+		if (
 			file.type === 'application/pdf' ||
 			IMAGE_MIME_TYPES.has(file.type) ||
 			TEXT_MIME_TYPES.has(file.type)
-		);
+		)
+			return true;
+		const ext = extOf(file);
+		return ext === '.pdf' || TEXT_EXTENSIONS.has(ext) || IMAGE_EXTENSIONS.has(ext);
 	}
 
 	async function uploadFile(entry: UploadEntry, file: File) {
@@ -73,7 +88,18 @@
 	}
 
 	function addFiles(files: File[]) {
-		const accepted = files.filter(isAccepted);
+		const accepted: File[] = [];
+		const rejected: File[] = [];
+		for (const f of files) (isAccepted(f) ? accepted : rejected).push(f);
+
+		const rejectedEntries: UploadEntry[] = rejected.map((f) => ({
+			id: nextId++,
+			name: f.name,
+			kind: 'text',
+			size: formatSize(f.size),
+			status: 'error',
+			error: 'Unsupported file type'
+		}));
 
 		const newEntries: UploadEntry[] = accepted.map((f) => ({
 			id: nextId++,
@@ -83,7 +109,7 @@
 			status: 'uploading'
 		}));
 
-		uploads = [...newEntries, ...uploads];
+		uploads = [...newEntries, ...rejectedEntries, ...uploads];
 
 		for (let i = 0; i < accepted.length; i++) {
 			uploadFile(newEntries[i], accepted[i]);
