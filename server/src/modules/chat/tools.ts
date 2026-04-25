@@ -1,6 +1,7 @@
 import type { Tool } from "@anthropic-ai/sdk/resources/messages";
-import type { EmbeddingProvider } from "@/modules/embedding";
+import type { EmbeddingProvider, RerankProvider } from "@/modules/embedding";
 import {
+	applyReranking,
 	deduplicateByBestSimilarity,
 	type FormattedSearchResult,
 	formatSearchResult,
@@ -174,6 +175,7 @@ export interface ChatToolResult {
 export interface ChatToolContext {
 	repo: DocumentRepository;
 	embedder: EmbeddingProvider;
+	reranker: RerankProvider | null;
 	/** Abort signal from the combined client-disconnect + idle-timeout controller. */
 	signal?: AbortSignal;
 }
@@ -204,7 +206,7 @@ export async function runChatTool(
 
 async function runQueryKnowledgeBase(
 	args: Record<string, unknown>,
-	{ repo, embedder, signal }: ChatToolContext,
+	{ repo, embedder, reranker, signal }: ChatToolContext,
 ): Promise<ChatToolResult> {
 	const question = String(args.question ?? "");
 	const extra = Array.isArray(args.extra_queries)
@@ -224,7 +226,7 @@ async function runQueryKnowledgeBase(
 	// Bail out early if the client has already disconnected.
 	if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
 
-	const perQueryLimit = Math.min(20, limit + 2);
+	const perQueryLimit = reranker ? 20 : Math.min(20, limit + 2);
 	const allResults = await Promise.all(
 		queries.map(async (q) => {
 			// Re-check before each embedding call; each is a network round-trip.
@@ -235,8 +237,16 @@ async function runQueryKnowledgeBase(
 		}),
 	);
 
-	const merged = deduplicateByBestSimilarity(allResults, limit);
-	if (merged.length === 0) {
+	const dedupLimit = reranker ? Math.min(limit * 4, 40) : limit;
+	const merged = deduplicateByBestSimilarity(allResults, dedupLimit);
+
+	if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+	const results =
+		reranker && merged.length > 0
+			? await applyReranking(reranker, question, merged, limit)
+			: merged.slice(0, limit);
+
+	if (results.length === 0) {
 		return {
 			text: JSON.stringify({
 				results: [],
@@ -246,7 +256,7 @@ async function runQueryKnowledgeBase(
 		};
 	}
 
-	const formatted = merged.map(formatSearchResult);
+	const formatted = results.map(formatSearchResult);
 	return {
 		text: JSON.stringify({ results: wrapDocumentsInTags(formatted) }),
 		sources: formatted.map((r) => ({
@@ -258,10 +268,10 @@ async function runQueryKnowledgeBase(
 
 async function runSearchDocuments(
 	args: Record<string, unknown>,
-	{ repo, embedder, signal }: ChatToolContext,
+	{ repo, embedder, reranker, signal }: ChatToolContext,
 ): Promise<ChatToolResult> {
 	const query = String(args.query ?? "");
-	const limit = typeof args.limit === "number" ? args.limit : 5;
+	const finalLimit = typeof args.limit === "number" ? args.limit : 5;
 	const tag = typeof args.tag === "string" ? args.tag : undefined;
 
 	if (!query) {
@@ -271,10 +281,22 @@ async function runSearchDocuments(
 		};
 	}
 
+	const candidateLimit = reranker ? Math.min(finalLimit * 4, 40) : finalLimit;
+
 	if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
 	const embedding = await embedder.embed(query);
 	if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
-	const results = await repo.search({ embedding, limit, tag });
+	const candidates = await repo.search({
+		embedding,
+		limit: candidateLimit,
+		tag,
+	});
+
+	if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+	const results =
+		reranker && candidates.length > 0
+			? await applyReranking(reranker, query, candidates, finalLimit)
+			: candidates;
 
 	if (results.length === 0) {
 		return {

@@ -5,7 +5,47 @@
  * logic can be tested independently from the MCP protocol machinery.
  */
 
+import type { RerankProvider } from "@/modules/embedding";
 import type { SearchResult } from "@/modules/repository";
+
+// ---------------------------------------------------------------------------
+// Reranking
+// ---------------------------------------------------------------------------
+
+/**
+ * Re-score a candidate set using a cross-encoder and return the top-N results.
+ *
+ * Falls back to the vector-ranked top-N if the reranker call fails, so a
+ * Cohere outage or rate-limit doesn't hard-fail the search request.
+ *
+ * Title is included in the reranker input alongside content because chunk
+ * titles carry heading-path context that improves relevance scoring.
+ */
+export async function applyReranking(
+	reranker: RerankProvider,
+	query: string,
+	candidates: SearchResult[],
+	topN: number,
+): Promise<SearchResult[]> {
+	try {
+		const ranked = await reranker.rerank({
+			query,
+			documents: candidates.map((r) => ({
+				id: r.id,
+				content: `${r.title}\n\n${r.content}`,
+			})),
+			topN,
+		});
+		return ranked.map(({ id, relevanceScore }) => {
+			const doc = candidates.find((r) => r.id === id);
+			if (!doc) throw new Error(`Reranker returned unknown id: ${id}`);
+			return { ...doc, similarity: relevanceScore };
+		});
+	} catch (err) {
+		console.error("[rerank] failed, falling back to vector ranking:", err);
+		return candidates.slice(0, topN);
+	}
+}
 
 // ---------------------------------------------------------------------------
 // Formatting

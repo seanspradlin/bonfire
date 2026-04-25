@@ -1,8 +1,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import type { EmbeddingProvider } from "@/modules/embedding";
+import type { EmbeddingProvider, RerankProvider } from "@/modules/embedding";
 import { ingestDocument } from "@/modules/ingestion";
 import {
+	applyReranking,
 	deduplicateByBestSimilarity,
 	formatSearchResult,
 } from "@/modules/mcp/searchResults";
@@ -17,6 +18,7 @@ export interface SharedDeps {
 	repo: DocumentRepository;
 	embedder: EmbeddingProvider;
 	vision: VisionProvider;
+	reranker: RerankProvider | null;
 }
 
 export interface ServerDeps extends SharedDeps {
@@ -31,6 +33,7 @@ export function createServer({
 	repo,
 	embedder,
 	vision,
+	reranker,
 	userId,
 }: ServerDeps): McpServer {
 	const server = new McpServer({
@@ -149,14 +152,24 @@ export function createServer({
 			},
 		},
 		async ({ query, limit, tag, since, before }) => {
+			const finalLimit = limit ?? 5;
+			const candidateLimit = reranker
+				? Math.min(finalLimit * 4, 40)
+				: finalLimit;
+
 			const embedding = await embedder.embed(query);
-			const results = await repo.search({
+			const candidates = await repo.search({
 				embedding,
-				limit,
+				limit: candidateLimit,
 				tag,
 				since,
 				before,
 			});
+
+			const results =
+				reranker && candidates.length > 0
+					? await applyReranking(reranker, query, candidates, finalLimit)
+					: candidates;
 
 			if (results.length === 0) {
 				return {
@@ -296,9 +309,10 @@ export function createServer({
 			},
 		},
 		async ({ question, extra_queries, limit, tag, since, before }) => {
-			const queries = [question, ...(extra_queries ?? [])];
-			const perQueryLimit = Math.min(20, (limit ?? 8) + 2);
+			const finalLimit = limit ?? 8;
+			const perQueryLimit = reranker ? 20 : Math.min(20, finalLimit + 2);
 
+			const queries = [question, ...(extra_queries ?? [])];
 			const allResults = await Promise.all(
 				queries.map(async (q) => {
 					const embedding = await embedder.embed(q);
@@ -312,9 +326,15 @@ export function createServer({
 				}),
 			);
 
-			const merged = deduplicateByBestSimilarity(allResults, limit ?? 8);
+			const dedupLimit = reranker ? Math.min(finalLimit * 4, 40) : finalLimit;
+			const merged = deduplicateByBestSimilarity(allResults, dedupLimit);
 
-			if (merged.length === 0) {
+			const results =
+				reranker && merged.length > 0
+					? await applyReranking(reranker, question, merged, finalLimit)
+					: merged.slice(0, finalLimit);
+
+			if (results.length === 0) {
 				return {
 					content: [{ type: "text", text: "No relevant documents found." }],
 				};
@@ -324,7 +344,7 @@ export function createServer({
 				content: [
 					{
 						type: "text",
-						text: JSON.stringify(merged.map(formatSearchResult), null, 2),
+						text: JSON.stringify(results.map(formatSearchResult), null, 2),
 					},
 				],
 			};

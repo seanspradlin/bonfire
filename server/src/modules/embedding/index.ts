@@ -8,3 +8,5 @@ export {
 } from "./chunker";
 export type { EmbeddingProvider } from "./embeddings";
 export { createEmbeddingProvider, EMBEDDING_DIMENSIONS } from "./embeddings";
+export type { RerankProvider } from "./reranker";
+export { createRerankProvider } from "./reranker";

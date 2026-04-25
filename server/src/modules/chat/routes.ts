@@ -13,12 +13,13 @@ import {
 	type ChatToolSource,
 	runChatTool,
 } from "@/modules/chat/tools";
-import type { EmbeddingProvider } from "@/modules/embedding";
+import type { EmbeddingProvider, RerankProvider } from "@/modules/embedding";
 import type { DocumentRepository } from "@/modules/repository";
 
 interface ChatDeps {
 	repo: DocumentRepository;
 	embedder: EmbeddingProvider;
+	reranker: RerankProvider | null;
 }
 
 const MODEL = "claude-sonnet-4-6";
@@ -90,7 +91,7 @@ function isRateLimited(userId: string): boolean {
 // Router
 // ---------------------------------------------------------------------------
 
-export function createChatRouter({ repo, embedder }: ChatDeps) {
+export function createChatRouter({ repo, embedder, reranker }: ChatDeps) {
 	const router = new Hono();
 	const apiKey = process.env.ANTHROPIC_API_KEY;
 	if (!apiKey) {
@@ -235,6 +236,7 @@ export function createChatRouter({ repo, embedder }: ChatDeps) {
 						const result = await runChatTool(block.name, block.input, {
 							repo,
 							embedder,
+							reranker,
 							signal: combinedController.signal,
 						});
 

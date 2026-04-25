@@ -9,7 +9,10 @@ import {
 	seedInitialAdminUser,
 } from "@/modules/auth";
 import { createChatRouter } from "@/modules/chat";
-import { createEmbeddingProvider } from "@/modules/embedding";
+import {
+	createEmbeddingProvider,
+	createRerankProvider,
+} from "@/modules/embedding";
 import { createHealthRouter } from "@/modules/health";
 import { createInvitationsRouter } from "@/modules/invitations";
 import { createMcpRouter } from "@/modules/mcp";
@@ -25,6 +28,7 @@ import { createVisionProvider } from "@/modules/vision";
 const repo = new PgDocumentRepository();
 const embedder = createEmbeddingProvider();
 const vision = createVisionProvider();
+const reranker = createRerankProvider();
 
 // ---------------------------------------------------------------------------
 // HTTP server — mount route modules
@@ -78,9 +82,9 @@ app.route("/", createHealthRouter());
 app.route("/", createAuthRouter());
 app.route("/", createUsersRouter());
 app.route("/", createInvitationsRouter());
-app.route("/", createMcpRouter({ repo, embedder, vision }));
+app.route("/", createMcpRouter({ repo, embedder, vision, reranker }));
 app.route("/", createUploadRouter({ repo, embedder, vision }));
-app.route("/", createChatRouter({ repo, embedder }));
+app.route("/", createChatRouter({ repo, embedder, reranker }));
 
 await seedInitialAdminUser();
 
