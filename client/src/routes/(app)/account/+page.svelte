@@ -354,7 +354,7 @@
 				<button
 					type="button"
 					onclick={() => (showMcpGuide = true)}
-					class="shrink-0 cursor-pointer rounded-lg border-[1.5px] border-border bg-transparent px-4 py-[7px] text-[13px] font-semibold text-accent transition-colors duration-150 hover:bg-[color-mix(in_srgb,var(--accent)_5%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+					class="shrink-0 cursor-pointer rounded-lg border-[1.5px] border-border bg-transparent px-4 py-[7px] text-[13px] font-semibold text-accent transition-colors duration-150 hover:bg-[color-mix(in_srgb,var(--accent)_5%,transparent)] focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:outline-none"
 				>
 					View guide →
 				</button>

@@ -2,6 +2,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import Avatar from '$lib/Avatar.svelte';
+	import ConfirmDeleteModal from '$lib/ConfirmDeleteModal.svelte';
 	import EditRoleModal from '$lib/EditRoleModal.svelte';
 	import FilterPills from '$lib/FilterPills.svelte';
 	import Icon from '$lib/Icon.svelte';
@@ -29,6 +30,8 @@
 	let filter = $state('All');
 	let editingUser = $state<User | null>(null);
 	let isEditModalOpen = $state(false);
+	let deletingUser = $state<User | null>(null);
+	let isDeleteModalOpen = $state(false);
 
 	const filtered = $derived(
 		users.filter((u) => {
@@ -60,11 +63,23 @@
 		}
 	]);
 
-	function removeUser(_id: string) {
-		// TODO: no DELETE /api/users/:id endpoint exists yet.
-		// When the endpoint is added, call it here then invalidateAll().
-		// For now we surface a notice rather than silently mutating local state.
-		alert('Delete not yet implemented — contact your administrator to remove a user.');
+	function openDeleteModal(u: User) {
+		deletingUser = u;
+		isDeleteModalOpen = true;
+	}
+
+	async function handleDeleteUser() {
+		if (!deletingUser) return;
+		const userId = deletingUser.id;
+
+		const response = await fetch(`/api/users/${userId}`, { method: 'DELETE' });
+
+		if (!response.ok) {
+			const body = await response.json().catch(() => ({}));
+			throw new Error(body.error ?? 'Failed to remove user');
+		}
+
+		await invalidateAll();
 	}
 
 	function openEditModal(user: User) {
@@ -182,7 +197,7 @@
 								<IconBtn title="Edit role" onclick={() => openEditModal(u)}>
 									<Icon name="settings" size={13} />
 								</IconBtn>
-								<IconBtn danger title="Remove user" onclick={() => removeUser(u.id)}>
+								<IconBtn danger title="Remove user" onclick={() => openDeleteModal(u)}>
 									<Icon name="trash" size={13} />
 								</IconBtn>
 							</div>
@@ -206,4 +221,15 @@
 		editingUser = null;
 	}}
 	onSave={handleRoleChange}
+/>
+
+<ConfirmDeleteModal
+	isOpen={isDeleteModalOpen}
+	userName={deletingUser?.name ?? ''}
+	userRole={deletingUser?.role ?? ''}
+	onClose={() => {
+		isDeleteModalOpen = false;
+		deletingUser = null;
+	}}
+	onConfirm={handleDeleteUser}
 />

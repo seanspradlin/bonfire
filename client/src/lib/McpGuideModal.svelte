@@ -139,7 +139,7 @@ Protocol:    MCP over HTTP/SSE`
 	bind:this={dialogEl}
 	onclose={handleDialogClose}
 	aria-labelledby="mcp-guide-title"
-	class="m-auto w-[90%] max-w-[580px] max-h-[85vh] overflow-hidden rounded-2xl border border-border bg-bg-card p-0 shadow-[0_24px_64px_rgba(0,0,0,0.25)] backdrop:bg-black/45 backdrop:backdrop-blur-[3px]"
+	class="m-auto max-h-[85vh] w-[90%] max-w-[580px] overflow-hidden rounded-2xl border border-border bg-bg-card p-0 shadow-[0_24px_64px_rgba(0,0,0,0.25)] backdrop:bg-black/45 backdrop:backdrop-blur-[3px]"
 >
 	<!-- Header -->
 	<div class="px-7 pt-6 pb-0">
@@ -156,7 +156,7 @@ Protocol:    MCP over HTTP/SSE`
 			<button
 				type="button"
 				onclick={handleClose}
-				class="mt-0.5 shrink-0 cursor-pointer rounded-md border-none bg-transparent p-0.5 text-text-faint hover:text-text-muted transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+				class="mt-0.5 shrink-0 cursor-pointer rounded-md border-none bg-transparent p-0.5 text-text-faint transition-colors duration-150 hover:text-text-muted focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:outline-none"
 				aria-label="Close dialog"
 			>
 				<Icon name="x" size={16} />
@@ -172,10 +172,10 @@ Protocol:    MCP over HTTP/SSE`
 						copyLabel = 'Copy';
 					}}
 					class={[
-						'cursor-pointer border-0 bg-transparent px-3 py-2 text-[13px] border-b-2 -mb-px transition-colors duration-150',
+						'-mb-px cursor-pointer border-0 border-b-2 bg-transparent px-3 py-2 text-[13px] transition-colors duration-150',
 						activeTab === tab.id
-							? 'font-semibold text-accent border-accent'
-							: 'font-normal text-text-muted border-transparent'
+							? 'border-accent font-semibold text-accent'
+							: 'border-transparent font-normal text-text-muted'
 					].join(' ')}
 				>
 					{tab.label}
@@ -191,7 +191,7 @@ Protocol:    MCP over HTTP/SSE`
 			{#each currentContent.steps as step, i (i)}
 				<li class="flex items-start gap-3">
 					<span
-						class="mt-0.5 flex size-[22px] shrink-0 items-center justify-center rounded-full border bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] border-[color-mix(in_srgb,var(--accent)_35%,transparent)] text-[11px] font-bold text-accent"
+						class="mt-0.5 flex size-[22px] shrink-0 items-center justify-center rounded-full border border-[color-mix(in_srgb,var(--accent)_35%,transparent)] bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] text-[11px] font-bold text-accent"
 					>
 						{i + 1}
 					</span>
@@ -202,7 +202,7 @@ Protocol:    MCP over HTTP/SSE`
 
 		<!-- Code block -->
 		<div class="mb-5 overflow-hidden rounded-[10px] border border-border bg-bg">
-			<div class="flex items-center justify-between px-4 py-2.5 border-b border-border">
+			<div class="flex items-center justify-between border-b border-border px-4 py-2.5">
 				<span class="text-[10px] font-bold tracking-[0.08em] text-text-faint uppercase">
 					Config
 				</span>
@@ -210,7 +210,7 @@ Protocol:    MCP over HTTP/SSE`
 					type="button"
 					onclick={copyCode}
 					class={[
-						'flex cursor-pointer items-center gap-1.5 rounded-[7px] border px-2.5 py-1 text-[11px] font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50',
+						'flex cursor-pointer items-center gap-1.5 rounded-[7px] border px-2.5 py-1 text-[11px] font-medium transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:outline-none',
 						copyLabel === 'Copied!'
 							? 'border-[color-mix(in_srgb,var(--accent)_40%,transparent)] bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] text-accent'
 							: 'border-border bg-transparent text-text-muted hover:bg-bg-hover hover:text-text'
@@ -222,7 +222,8 @@ Protocol:    MCP over HTTP/SSE`
 					{copyLabel}
 				</button>
 			</div>
-			<pre class="overflow-x-auto px-4 py-4 font-mono text-[12px] leading-[1.7] text-text">{currentContent.code}</pre>
+			<pre
+				class="overflow-x-auto px-4 py-4 font-mono text-[12px] leading-[1.7] text-text">{currentContent.code}</pre>
 		</div>
 
 		<!-- Security callout -->
@@ -230,7 +231,10 @@ Protocol:    MCP over HTTP/SSE`
 			class="rounded-[10px] border border-[color-mix(in_srgb,var(--accent)_30%,transparent)] bg-[color-mix(in_srgb,var(--accent)_7%,transparent)] px-4 py-3 text-[12px] leading-[1.6] text-text-muted"
 		>
 			<strong class="font-semibold text-text">Remember:</strong> Replace
-			<code class="rounded bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] px-1 font-mono text-[11px] text-accent">YOUR_TOKEN_HERE</code>
+			<code
+				class="rounded bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] px-1 font-mono text-[11px] text-accent"
+				>YOUR_TOKEN_HERE</code
+			>
 			with the token you generate below. Keep it secret — treat it like a password.
 		</div>
 	</div>

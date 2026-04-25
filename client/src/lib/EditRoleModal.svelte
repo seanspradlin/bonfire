@@ -106,6 +106,9 @@
 <dialog
 	bind:this={dialogEl}
 	onclose={handleDialogClose}
+	oncancel={(e) => {
+		if (isLoading) e.preventDefault();
+	}}
 	aria-labelledby="edit-role-title"
 	class="m-auto w-[90%] max-w-[400px] overflow-hidden rounded-2xl border border-border bg-bg-card p-0 shadow-[0_24px_64px_rgba(0,0,0,0.25)] backdrop:bg-black/45 backdrop:backdrop-blur-[3px]"
 >

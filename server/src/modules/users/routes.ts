@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { isAdmin, requireAuth } from "@/modules/auth";
 import { auth } from "@/modules/auth/auth";
 import { db } from "@/modules/db";
-import { user } from "@/modules/db/schema";
+import { account, apiKey, session, user } from "@/modules/db/schema";
 
 /** Thrown when a role-change would remove the last admin in the system. */
 class LastAdminError extends Error {
@@ -128,6 +128,70 @@ export function createUsersRouter() {
 				return c.json({ error: "User not found" }, 404);
 			}
 			console.error("Failed to update user role:", error);
+			return c.json({ error: "Internal server error" }, 500);
+		}
+	});
+
+	router.delete("/users/:id", async (c) => {
+		const authUser = requireAuth(c);
+		if (authUser instanceof Response) return authUser;
+		if (!isAdmin(authUser)) return c.json({ error: "Forbidden" }, 403);
+
+		const userId = c.req.param("id");
+
+		if (userId === authUser.id) {
+			return c.json({ error: "Cannot delete yourself" }, 400);
+		}
+
+		try {
+			await db.transaction(
+				async (tx) => {
+					const [targetUser] = await tx
+						.select({ id: user.id, role: user.role })
+						.from(user)
+						.where(eq(user.id, userId))
+						.limit(1);
+
+					if (!targetUser) {
+						throw Object.assign(new Error("User not found"), {
+							code: "USER_NOT_FOUND",
+						});
+					}
+
+					// Prevent removing the last admin.
+					if (targetUser.role === "admin") {
+						const [{ adminCount }] = await tx
+							.select({ adminCount: sql<number>`count(*)::int` })
+							.from(user)
+							.where(and(eq(user.role, "admin"), ne(user.id, userId)));
+
+						if (adminCount === 0) {
+							throw new LastAdminError();
+						}
+					}
+
+					await tx.delete(apiKey).where(eq(apiKey.userId, userId));
+					await tx.delete(session).where(eq(session.userId, userId));
+					await tx.delete(account).where(eq(account.userId, userId));
+					await tx.delete(user).where(eq(user.id, userId));
+
+					return true;
+				},
+				{ isolationLevel: "serializable" },
+			);
+
+			return new Response(null, { status: 204 });
+		} catch (error) {
+			if (error instanceof LastAdminError) {
+				return c.json({ error: "Cannot delete the last admin" }, 400);
+			}
+			if (
+				error instanceof Error &&
+				(error as Error & { code?: string }).code === "USER_NOT_FOUND"
+			) {
+				return c.json({ error: "User not found" }, 404);
+			}
+			console.error("Failed to delete user:", error);
 			return c.json({ error: "Internal server error" }, 500);
 		}
 	});
