@@ -92,10 +92,11 @@ export interface DocumentRepository {
 	getById(id: string): Promise<Document | null>;
 
 	/**
-	 * List top-level documents (parentId IS NULL) optionally filtered by tag.
-	 * Chunks are excluded — use getById to retrieve them via their parent.
+	 * List top-level documents (parentId IS NULL) optionally filtered by tag
+	 * and/or userId. Chunks are excluded — use getById to retrieve them via
+	 * their parent.
 	 */
-	list(params?: { tag?: string }): Promise<Document[]>;
+	list(params?: { tag?: string; userId?: string }): Promise<Document[]>;
 
 	/** Delete a document by ID. Returns true if a row was deleted. */
 	delete(id: string): Promise<boolean>;
@@ -376,7 +377,7 @@ export class PgDocumentRepository implements DocumentRepository {
 		return rowToDocument(rows[0]);
 	}
 
-	async list(params?: { tag?: string }): Promise<Document[]> {
+	async list(params?: { tag?: string; userId?: string }): Promise<Document[]> {
 		const rows = await db
 			.select({
 				id: documents.id,
@@ -395,6 +396,9 @@ export class PgDocumentRepository implements DocumentRepository {
 					isNull(documents.parentId),
 					params?.tag
 						? sql`${documents.tags} @> ${JSON.stringify([params.tag])}::jsonb`
+						: undefined,
+					params?.userId
+						? eq(documents.userId, params.userId)
 						: undefined,
 				),
 			);

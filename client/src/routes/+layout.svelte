@@ -14,6 +14,10 @@
 	);
 </script>
 
+<svelte:head>
+	<title>Bonfire — Knowledge Base</title>
+</svelte:head>
+
 <div
 	data-theme={themeKey}
 	class="min-h-screen bg-bg text-text transition-colors duration-300"

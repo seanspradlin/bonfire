@@ -9,6 +9,7 @@ import {
 	seedInitialAdminUser,
 } from "@/modules/auth";
 import { createChatRouter } from "@/modules/chat";
+import { createDocumentsRouter } from "@/modules/documents";
 import {
 	createEmbeddingProvider,
 	createRerankProvider,
@@ -81,6 +82,7 @@ app.use("*", createAuthSessionMiddleware());
 app.route("/", createHealthRouter());
 app.route("/", createAuthRouter());
 app.route("/", createUsersRouter());
+app.route("/", createDocumentsRouter({ repo, embedder }));
 app.route("/", createInvitationsRouter());
 app.route("/", createMcpRouter({ repo, embedder, vision, reranker }));
 app.route("/", createUploadRouter({ repo, embedder, vision }));

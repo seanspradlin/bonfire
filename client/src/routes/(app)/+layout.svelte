@@ -17,16 +17,16 @@
 
 	const currentPath = $derived($page.url.pathname.replace(/^\//, ''));
 
-	type NavItem = {
-		id: 'chat' | 'upload' | 'dashboard' | 'settings';
-		label: string;
-		icon: string;
-	};
+	type NavItemId = 'chat' | 'documents' | 'upload' | 'dashboard' | 'settings';
+	type NavItem = { id: NavItemId; label: string; icon: string };
 
-	const topNavItems: NavItem[] = [
+	const canEdit = $derived(['admin', 'editor'].includes(data.user?.role ?? ''));
+
+	const topNavItems = $derived<NavItem[]>([
 		{ id: 'chat', label: 'Chat', icon: 'flame' },
+		...(canEdit ? [{ id: 'documents' as NavItemId, label: 'Documents', icon: 'pdf' }] : []),
 		{ id: 'upload', label: 'Upload Files', icon: 'upload' }
-	];
+	]);
 
 	const bottomNavItems: NavItem[] = [
 		{ id: 'dashboard', label: 'Users', icon: 'users' },
