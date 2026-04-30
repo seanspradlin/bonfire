@@ -61,6 +61,7 @@ export function createMcpRouter(deps: SharedDeps) {
 	async function handleMcpRequest(
 		req: Request,
 		userId: string,
+		authMethod: "api-key" | "session",
 	): Promise<Response> {
 		const sessionId = req.headers.get("mcp-session-id");
 
@@ -104,6 +105,21 @@ export function createMcpRouter(deps: SharedDeps) {
 					lastActivityAt: now,
 					createdAt: now,
 				});
+				const forwarded = req.headers.get("x-forwarded-for");
+				const clientIp =
+					forwarded?.split(",")[0]?.trim() ||
+					req.headers.get("cf-connecting-ip") ||
+					req.headers.get("x-real-ip") ||
+					null;
+				console.log("MCP session opened", {
+					sessionId: sid,
+					userId,
+					authMethod,
+					userAgent: req.headers.get("user-agent"),
+					protocolVersion: req.headers.get("mcp-protocol-version"),
+					clientIp,
+					activeSessions: sessions.size,
+				});
 			},
 			onsessionclosed: (sid) => {
 				sessions.delete(sid);
@@ -125,12 +141,14 @@ export function createMcpRouter(deps: SharedDeps) {
 	/** MCP Streamable HTTP endpoint — handles all MCP protocol traffic */
 	router.all("/mcp", async (c) => {
 		let userId: string | null = null;
+		let authMethod: "api-key" | "session" | null = null;
 
 		// Try API key authentication first
 		const authHeader = c.req.header("authorization");
 		if (authHeader?.startsWith("Bearer ")) {
 			const apiKey = authHeader.slice(7);
 			userId = await authenticateApiKey(apiKey);
+			if (userId) authMethod = "api-key";
 		}
 
 		// Fall back to session authentication
@@ -138,15 +156,16 @@ export function createMcpRouter(deps: SharedDeps) {
 			const user = c.get("user");
 			if (user) {
 				userId = user.id;
+				authMethod = "session";
 			}
 		}
 
 		// If both auth methods failed, return 401
-		if (!userId) {
+		if (!userId || !authMethod) {
 			return c.json({ error: "Unauthorized" }, 401);
 		}
 
-		return handleMcpRequest(c.req.raw, userId);
+		return handleMcpRequest(c.req.raw, userId, authMethod);
 	});
 
 	return router;
