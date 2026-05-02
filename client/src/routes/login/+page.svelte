@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { page } from '$app/stores';
 	import { resolve } from '$app/paths';
 	import { authClient } from '$lib/auth-client';
 	import Btn from '$lib/Btn.svelte';
@@ -26,7 +27,8 @@
 			if (result.error) {
 				error = result.error.message || 'Failed to sign in. Please check your credentials.';
 			} else {
-				goto(resolve('/chat'));
+				const redirect = $page.url.searchParams.get('redirect');
+				goto(redirect ?? resolve('/chat'));
 			}
 		} catch (err) {
 			error = 'An unexpected error occurred. Please try again.';

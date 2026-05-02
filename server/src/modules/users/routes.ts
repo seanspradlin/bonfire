@@ -3,7 +3,14 @@ import { Hono } from "hono";
 import { isAdmin, requireAuth } from "@/modules/auth";
 import { auth } from "@/modules/auth/auth";
 import { db } from "@/modules/db";
-import { account, session, user } from "@/modules/db/schema";
+import {
+	account,
+	oauthAccessToken,
+	oauthConsent,
+	oauthRefreshToken,
+	session,
+	user,
+} from "@/modules/db/schema";
 
 /** Thrown when a role-change would remove the last admin in the system. */
 class LastAdminError extends Error {
@@ -170,6 +177,9 @@ export function createUsersRouter() {
 						}
 					}
 
+					await tx.delete(oauthAccessToken).where(eq(oauthAccessToken.userId, userId));
+					await tx.delete(oauthRefreshToken).where(eq(oauthRefreshToken.userId, userId));
+					await tx.delete(oauthConsent).where(eq(oauthConsent.userId, userId));
 					await tx.delete(session).where(eq(session.userId, userId));
 					await tx.delete(account).where(eq(account.userId, userId));
 					await tx.delete(user).where(eq(user.id, userId));
