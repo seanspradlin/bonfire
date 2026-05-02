@@ -29,7 +29,9 @@
 	$effect(() => {
 		if (!dialogEl) return;
 		if (isOpen) {
-			untrack(() => { error = ''; });
+			untrack(() => {
+				error = '';
+			});
 			triggerEl = document.activeElement;
 			dialogEl.showModal();
 		} else {
@@ -69,7 +71,9 @@
 <dialog
 	bind:this={dialogEl}
 	onclose={handleDialogClose}
-	oncancel={(e) => { if (isLoading) e.preventDefault(); }}
+	oncancel={(e) => {
+		if (isLoading) e.preventDefault();
+	}}
 	aria-labelledby="confirm-dialog-title"
 	class="m-auto w-[90%] max-w-[400px] overflow-hidden rounded-2xl border border-border bg-bg-card p-0 shadow-[0_24px_64px_rgba(0,0,0,0.25)] backdrop:bg-black/45 backdrop:backdrop-blur-[3px]"
 >

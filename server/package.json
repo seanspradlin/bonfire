@@ -24,11 +24,13 @@
 	"dependencies": {
 		"@anthropic-ai/sdk": "^0.90.0",
 		"@better-auth/cli": "^1.4.21",
+		"@better-auth/oauth-provider": "^1.6.9",
 		"@modelcontextprotocol/sdk": "^1.29.0",
 		"better-auth": "^1.6.5",
 		"cohere-ai": "^8.0.0",
 		"drizzle-orm": "^0.45.2",
 		"hono": "^4.12.12",
+		"jose": "^6.2.3",
 		"openai": "^6.34.0",
 		"pg": "^8.20.0",
 		"resend": "^6.12.2",

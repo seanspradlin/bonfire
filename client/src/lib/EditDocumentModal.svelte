@@ -8,7 +8,12 @@
 		isOpen: boolean;
 		document: Document | null;
 		onClose: () => void;
-		onSave: (updates: { title: string; content: string; tags: string[]; date: string }) => Promise<void>;
+		onSave: (updates: {
+			title: string;
+			content: string;
+			tags: string[];
+			date: string;
+		}) => Promise<void>;
 	}
 
 	let { isOpen = false, document = null, onClose, onSave }: Props = $props();
@@ -43,8 +48,14 @@
 	async function handleSave() {
 		const trimmedTitle = title.trim();
 		const trimmedContent = content.trim();
-		if (!trimmedTitle) { error = 'Title is required.'; return; }
-		if (!trimmedContent) { error = 'Content is required.'; return; }
+		if (!trimmedTitle) {
+			error = 'Title is required.';
+			return;
+		}
+		if (!trimmedContent) {
+			error = 'Content is required.';
+			return;
+		}
 
 		const tags = tagsRaw
 			.split(',')
@@ -82,7 +93,9 @@
 <dialog
 	bind:this={dialogEl}
 	onclose={handleDialogClose}
-	oncancel={(e) => { if (isLoading) e.preventDefault(); }}
+	oncancel={(e) => {
+		if (isLoading) e.preventDefault();
+	}}
 	aria-labelledby="edit-doc-title"
 	class="m-auto w-[90%] max-w-[640px] overflow-hidden rounded-2xl border border-border bg-bg-card p-0 shadow-[0_24px_64px_rgba(0,0,0,0.25)] backdrop:bg-black/45 backdrop:backdrop-blur-[3px]"
 >
@@ -102,7 +115,10 @@
 
 		<div class="flex flex-col gap-4">
 			<div>
-				<label class="mb-1.5 block text-[13px] font-medium text-text-muted" for="edit-doc-title-input">
+				<label
+					class="mb-1.5 block text-[13px] font-medium text-text-muted"
+					for="edit-doc-title-input"
+				>
 					Title
 				</label>
 				<input
@@ -116,7 +132,7 @@
 
 			<div>
 				<label class="mb-1.5 block text-[13px] font-medium text-text-muted" for="edit-doc-tags">
-					Tags <span class="text-text-faint font-normal">(comma-separated)</span>
+					Tags <span class="font-normal text-text-faint">(comma-separated)</span>
 				</label>
 				<input
 					id="edit-doc-tags"
@@ -129,7 +145,9 @@
 
 			<div>
 				<label class="mb-1.5 block text-[13px] font-medium text-text-muted" for="edit-doc-date">
-					Document date <span class="text-text-faint font-normal">(optional — when the content is from)</span>
+					Document date <span class="font-normal text-text-faint"
+						>(optional — when the content is from)</span
+					>
 				</label>
 				<input
 					id="edit-doc-date"

@@ -397,9 +397,7 @@ export class PgDocumentRepository implements DocumentRepository {
 					params?.tag
 						? sql`${documents.tags} @> ${JSON.stringify([params.tag])}::jsonb`
 						: undefined,
-					params?.userId
-						? eq(documents.userId, params.userId)
-						: undefined,
+					params?.userId ? eq(documents.userId, params.userId) : undefined,
 				),
 			);
 

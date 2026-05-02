@@ -95,7 +95,10 @@ export function createDocumentsRouter(deps: {
 
 		const parsed = updateSchema.safeParse(raw);
 		if (!parsed.success) {
-			return c.json({ error: parsed.error.issues[0]?.message ?? "Invalid body" }, 400);
+			return c.json(
+				{ error: parsed.error.issues[0]?.message ?? "Invalid body" },
+				400,
+			);
 		}
 		const body = parsed.data;
 

@@ -1,4 +1,4 @@
-bonfire.example.com {
+localhost {
 	handle_path /api/* {
 		reverse_proxy localhost:3000
 	}
@@ -18,6 +18,6 @@ bonfire.example.com {
 	}
 
 	handle {
-		reverse_proxy localhost:3001
+		reverse_proxy localhost:5173
 	}
 }

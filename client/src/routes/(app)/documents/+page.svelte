@@ -32,7 +32,9 @@
 	let tagDropEl = $state<HTMLDivElement | null>(null);
 
 	const allTags = $derived([...new Set(documents.flatMap((d) => d.tags))].sort());
-	const filteredTags = $derived(allTags.filter((t) => t.toLowerCase().includes(tagSearch.toLowerCase())));
+	const filteredTags = $derived(
+		allTags.filter((t) => t.toLowerCase().includes(tagSearch.toLowerCase()))
+	);
 
 	const sorted = $derived(
 		[...documents]
@@ -50,7 +52,9 @@
 	);
 
 	// Keep selected in sync after list refreshes (e.g. after edit/delete)
-	const selectedDoc = $derived(selected ? (documents.find((d) => d.id === selected!.id) ?? null) : null);
+	const selectedDoc = $derived(
+		selected ? (documents.find((d) => d.id === selected!.id) ?? null) : null
+	);
 
 	$effect(() => {
 		function handleClick(e: MouseEvent) {
@@ -73,7 +77,12 @@
 		await invalidateAll();
 	}
 
-	async function handleSaveEdit(updates: { title: string; content: string; tags: string[]; date: string }) {
+	async function handleSaveEdit(updates: {
+		title: string;
+		content: string;
+		tags: string[];
+		date: string;
+	}) {
 		if (!selectedDoc) return;
 		const res = await fetch(`/api/documents/${selectedDoc.id}`, {
 			method: 'PUT',
@@ -150,7 +159,10 @@
 						{#if activeTag}
 							<button
 								type="button"
-								onclick={() => { activeTag = null; tagSearch = ''; }}
+								onclick={() => {
+									activeTag = null;
+									tagSearch = '';
+								}}
 								class="flex h-[38px] shrink-0 items-center rounded-lg border border-border bg-bg-input px-2 text-text-faint transition-all duration-150 hover:text-text"
 								aria-label="Clear tag filter"
 							>
@@ -161,7 +173,7 @@
 
 					{#if tagDropOpen}
 						<div
-							class="absolute top-[calc(100%+4px)] left-0 right-0 z-10 overflow-hidden rounded-[10px] border border-border bg-bg-card shadow-[var(--shadow)]"
+							class="absolute top-[calc(100%+4px)] right-0 left-0 z-10 overflow-hidden rounded-[10px] border border-border bg-bg-card shadow-[var(--shadow)]"
 						>
 							<div class="px-2 pt-2 pb-1">
 								<!-- svelte-ignore a11y_autofocus -->
@@ -180,7 +192,11 @@
 								{#each filteredTags as tag (tag)}
 									<button
 										type="button"
-										onclick={() => { activeTag = tag; tagDropOpen = false; tagSearch = ''; }}
+										onclick={() => {
+											activeTag = tag;
+											tagDropOpen = false;
+											tagSearch = '';
+										}}
 										class={[
 											'flex w-full cursor-pointer items-center justify-between rounded-[7px] border-none px-[10px] py-2 text-left text-[13px] transition-colors duration-100',
 											activeTag === tag
@@ -219,8 +235,10 @@
 					].join(' ')}
 				>
 					<div class="mb-1.5 flex items-start justify-between gap-2">
-						<div class="text-sm font-semibold leading-snug text-text">{doc.title}</div>
-						<div class="shrink-0 text-[11px] text-text-faint">{formatRelativeTime(doc.updatedAt)}</div>
+						<div class="text-sm leading-snug font-semibold text-text">{doc.title}</div>
+						<div class="shrink-0 text-[11px] text-text-faint">
+							{formatRelativeTime(doc.updatedAt)}
+						</div>
 					</div>
 					<p
 						class="mb-[10px] overflow-hidden text-[12px] leading-relaxed text-text-muted"
@@ -249,7 +267,9 @@
 				<!-- Actions row -->
 				<div class="mb-5 flex items-center justify-between">
 					<button
-						onclick={() => { selected = null; }}
+						onclick={() => {
+							selected = null;
+						}}
 						class="flex cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-transparent px-3 py-1.5 text-[12px] text-text-muted transition-all duration-150 hover:bg-bg-hover"
 					>
 						<Icon name="x" size={12} />
@@ -267,7 +287,7 @@
 
 				<!-- Title -->
 				<h1
-					class="mb-2 text-[24px] font-bold leading-tight tracking-[-0.02em] text-text"
+					class="mb-2 text-[24px] leading-tight font-bold tracking-[-0.02em] text-text"
 					style="font-family:'Tenon','DM Sans',sans-serif"
 				>
 					{selectedDoc.title}
@@ -299,9 +319,7 @@
 				<div
 					class="rounded-xl border-[1.5px] border-border bg-bg-card p-6 shadow-[var(--shadow-card)]"
 				>
-					<div
-						class="mb-3 text-[11px] font-bold tracking-[0.07em] text-text-faint uppercase"
-					>
+					<div class="mb-3 text-[11px] font-bold tracking-[0.07em] text-text-faint uppercase">
 						Content
 					</div>
 					<div class="text-text-muted">

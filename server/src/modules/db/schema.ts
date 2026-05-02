@@ -119,25 +119,6 @@ export const verification = pgTable(
 	(t) => [index("verification_identifier_idx").on(t.identifier)],
 );
 
-export const apiKey = pgTable(
-	"api_key",
-	{
-		id: text("id").primaryKey(),
-		userId: text("user_id").notNull(),
-		keyHash: text("key_hash").notNull(),
-		name: text("name").notNull(),
-		keyHint: text("key_hint").notNull().default(""),
-		lastUsedAt: timestamp("last_used_at", { mode: "date" }),
-		expiresAt: timestamp("expires_at", { mode: "date" }),
-		createdAt: timestamp("created_at", { mode: "date" }).notNull(),
-		updatedAt: timestamp("updated_at", { mode: "date" }).notNull(),
-	},
-	(t) => [
-		index("api_key_user_id_idx").on(t.userId),
-		uniqueIndex("api_key_hash_unique").on(t.keyHash),
-	],
-);
-
 export const invitations = pgTable(
 	"invitations",
 	{
@@ -155,5 +136,91 @@ export const invitations = pgTable(
 		index("invitations_email_idx").on(t.email),
 	],
 );
+
+export const jwks = pgTable("jwks", {
+	id: text("id").primaryKey(),
+	publicKey: text("public_key").notNull(),
+	privateKey: text("private_key").notNull(),
+	createdAt: timestamp("created_at", { mode: "date" }).notNull(),
+	expiresAt: timestamp("expires_at", { mode: "date" }),
+});
+
+export const oauthClient = pgTable(
+	"oauth_client",
+	{
+		id: text("id").primaryKey(),
+		clientId: text("client_id").notNull(),
+		clientSecret: text("client_secret"),
+		disabled: boolean("disabled").default(false),
+		skipConsent: boolean("skip_consent"),
+		enableEndSession: boolean("enable_end_session"),
+		subjectType: text("subject_type"),
+		scopes: text("scopes").array(),
+		userId: text("user_id"),
+		createdAt: timestamp("created_at", { mode: "date" }),
+		updatedAt: timestamp("updated_at", { mode: "date" }),
+		name: text("name"),
+		uri: text("uri"),
+		icon: text("icon"),
+		contacts: text("contacts").array(),
+		tos: text("tos"),
+		policy: text("policy"),
+		softwareId: text("software_id"),
+		softwareVersion: text("software_version"),
+		softwareStatement: text("software_statement"),
+		redirectUris: text("redirect_uris").array().notNull(),
+		postLogoutRedirectUris: text("post_logout_redirect_uris").array(),
+		tokenEndpointAuthMethod: text("token_endpoint_auth_method"),
+		grantTypes: text("grant_types").array(),
+		responseTypes: text("response_types").array(),
+		public: boolean("public"),
+		type: text("type"),
+		requirePKCE: boolean("require_pkce"),
+		referenceId: text("reference_id"),
+		metadata: jsonb("metadata"),
+	},
+	(t) => [uniqueIndex("oauth_client_client_id_unique").on(t.clientId)],
+);
+
+export const oauthRefreshToken = pgTable("oauth_refresh_token", {
+	id: text("id").primaryKey(),
+	token: text("token").notNull(),
+	clientId: text("client_id").notNull(),
+	sessionId: text("session_id"),
+	userId: text("user_id").notNull(),
+	referenceId: text("reference_id"),
+	expiresAt: timestamp("expires_at", { mode: "date" }),
+	createdAt: timestamp("created_at", { mode: "date" }),
+	revoked: timestamp("revoked", { mode: "date" }),
+	authTime: timestamp("auth_time", { mode: "date" }),
+	scopes: text("scopes").array().notNull(),
+});
+
+export const oauthAccessToken = pgTable(
+	"oauth_access_token",
+	{
+		id: text("id").primaryKey(),
+		token: text("token"),
+		clientId: text("client_id").notNull(),
+		sessionId: text("session_id"),
+		userId: text("user_id"),
+		referenceId: text("reference_id"),
+		refreshId: text("refresh_id"),
+		expiresAt: timestamp("expires_at", { mode: "date" }),
+		createdAt: timestamp("created_at", { mode: "date" }),
+		scopes: text("scopes").array().notNull(),
+	},
+	(t) => [uniqueIndex("oauth_access_token_token_unique").on(t.token)],
+);
+
+export const oauthConsent = pgTable("oauth_consent", {
+	id: text("id").primaryKey(),
+	clientId: text("client_id").notNull(),
+	userId: text("user_id"),
+	referenceId: text("reference_id"),
+	scopes: text("scopes").array().notNull(),
+	createdAt: timestamp("created_at", { mode: "date" }),
+	updatedAt: timestamp("updated_at", { mode: "date" }),
+});
 
 export type DocumentRow = typeof documents.$inferSelect;

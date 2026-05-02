@@ -10,7 +10,7 @@ export const load: LayoutServerLoad = async ({ fetch, url }) => {
 	// Use event.fetch so the session cookie is forwarded automatically.
 	// The auth client is configured at basePath '/api/auth', so the
 	// get-session endpoint is /api/auth/get-session.
-	let session: SessionResponse | null = null;
+	let session: SessionResponse | null;
 
 	try {
 		const res = await fetch('/api/auth/get-session');

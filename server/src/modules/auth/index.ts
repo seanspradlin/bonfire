@@ -1,11 +1,5 @@
-export {
-	authenticateApiKey,
-	createApiKey,
-	deleteApiKey,
-	listApiKeys,
-} from "@/modules/auth/apiKeys";
 export type { AuthSession } from "@/modules/auth/auth";
-export { getSessionFromHeaders } from "@/modules/auth/auth";
+export { baseURL, getSessionFromHeaders } from "@/modules/auth/auth";
 export {
 	type AuthUser,
 	createAuthSessionMiddleware,
