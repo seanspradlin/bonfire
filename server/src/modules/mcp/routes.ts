@@ -64,7 +64,7 @@ export function createMcpRouter(deps: SharedDeps) {
 	async function handleMcpRequest(
 		req: Request,
 		userId: string,
-		authMethod: "oauth" | "session",
+		authMethod: "oauth",
 	): Promise<Response> {
 		const sessionId = req.headers.get("mcp-session-id");
 
@@ -142,42 +142,32 @@ export function createMcpRouter(deps: SharedDeps) {
 
 	/** MCP Streamable HTTP endpoint — handles all MCP protocol traffic */
 	router.all("/mcp", async (c) => {
-		let userId: string | null = null;
-		let authMethod: "oauth" | "session" | null = null;
-
 		const authHeader = c.req.header("authorization");
-		if (authHeader?.startsWith("Bearer ")) {
-			const token = authHeader.slice(7);
-			try {
-				const { payload } = await jwtVerify(token, jwks, {
-					issuer: `${baseURL}/auth`,
-					audience: `${baseURL}/mcp`,
-				});
-				if (payload.sub) {
-					userId = payload.sub;
-					authMethod = "oauth";
-				}
-			} catch (err) {
-				console.warn("MCP JWT verification failed", { error: err });
-			}
-		}
-
-		// Fall back to session authentication (browser UI)
-		if (!userId) {
-			const user = c.get("user");
-			if (user) {
-				userId = user.id;
-				authMethod = "session";
-			}
-		}
-
-		if (!userId || !authMethod) {
+		if (!authHeader?.startsWith("Bearer ")) {
 			return c.json({ error: "Unauthorized" }, 401, {
 				"WWW-Authenticate": `Bearer resource_metadata="${baseURL}/.well-known/oauth-protected-resource"`,
 			});
 		}
 
-		return handleMcpRequest(c.req.raw, userId, authMethod);
+		const token = authHeader.slice(7);
+		let userId: string | null = null;
+		try {
+			const { payload } = await jwtVerify(token, jwks, {
+				issuer: `${baseURL}/auth`,
+				audience: `${baseURL}/mcp`,
+			});
+			if (payload.sub) userId = payload.sub;
+		} catch (err) {
+			console.warn("MCP JWT verification failed", { error: err });
+		}
+
+		if (!userId) {
+			return c.json({ error: "Unauthorized" }, 401, {
+				"WWW-Authenticate": `Bearer resource_metadata="${baseURL}/.well-known/oauth-protected-resource"`,
+			});
+		}
+
+		return handleMcpRequest(c.req.raw, userId, "oauth");
 	});
 
 	return router;

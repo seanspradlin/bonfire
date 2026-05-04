@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { cors } from "hono/cors";
 import { csrf } from "hono/csrf";
 import {
 	type AuthUser,
@@ -43,23 +42,6 @@ const app = new Hono<{
 }>();
 
 const clientUrl = process.env.CLIENT_URL ?? "http://localhost:5173";
-
-// CORS — must be first so preflight requests get the right headers before any
-// other middleware or route handler runs.
-app.use(
-	"*",
-	cors({
-		origin: [clientUrl],
-		credentials: true,
-		allowHeaders: [
-			"Content-Type",
-			"Authorization",
-			"x-api-key",
-			"mcp-session-id",
-		],
-		exposeHeaders: ["mcp-session-id"],
-	}),
-);
 
 // CSRF — skip /mcp (uses header auth, not cookies) and /auth/* (Better Auth
 // manages its own trusted-origin validation for those routes).

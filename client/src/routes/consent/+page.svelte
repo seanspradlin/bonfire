@@ -138,8 +138,6 @@
 			</div>
 		</div>
 
-		<p class="mt-6 text-center text-xs text-text-faint">
-			Only authorize applications you trust.
-		</p>
+		<p class="mt-6 text-center text-xs text-text-faint">Only authorize applications you trust.</p>
 	</div>
 </div>

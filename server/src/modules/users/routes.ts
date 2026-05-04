@@ -177,8 +177,12 @@ export function createUsersRouter() {
 						}
 					}
 
-					await tx.delete(oauthAccessToken).where(eq(oauthAccessToken.userId, userId));
-					await tx.delete(oauthRefreshToken).where(eq(oauthRefreshToken.userId, userId));
+					await tx
+						.delete(oauthAccessToken)
+						.where(eq(oauthAccessToken.userId, userId));
+					await tx
+						.delete(oauthRefreshToken)
+						.where(eq(oauthRefreshToken.userId, userId));
 					await tx.delete(oauthConsent).where(eq(oauthConsent.userId, userId));
 					await tx.delete(session).where(eq(session.userId, userId));
 					await tx.delete(account).where(eq(account.userId, userId));
