@@ -6,7 +6,9 @@ import {
 	type FormattedSearchResult,
 	formatSearchResult,
 } from "@/modules/mcp/searchResults";
+import { resolveArtifactUrls } from "@/modules/mcp/tools";
 import type { DocumentRepository } from "@/modules/repository";
+import type { StorageProvider } from "@/modules/storage";
 
 // ---------------------------------------------------------------------------
 // Tool definitions exposed to Claude
@@ -176,6 +178,8 @@ export interface ChatToolContext {
 	repo: DocumentRepository;
 	embedder: EmbeddingProvider;
 	reranker: RerankProvider | null;
+	storage: StorageProvider | null;
+	userId: string;
 	/** Abort signal from the combined client-disconnect + idle-timeout controller. */
 	signal?: AbortSignal;
 }
@@ -206,7 +210,7 @@ export async function runChatTool(
 
 async function runQueryKnowledgeBase(
 	args: Record<string, unknown>,
-	{ repo, embedder, reranker, signal }: ChatToolContext,
+	{ repo, embedder, reranker, storage, userId, signal }: ChatToolContext,
 ): Promise<ChatToolResult> {
 	const question = String(args.question ?? "");
 	const extra = Array.isArray(args.extra_queries)
@@ -256,7 +260,10 @@ async function runQueryKnowledgeBase(
 		};
 	}
 
-	const formatted = results.map(formatSearchResult);
+	const artifactUrls = await resolveArtifactUrls(results, storage, userId);
+	const formatted = results.map((r, i) =>
+		formatSearchResult(r, artifactUrls[i]),
+	);
 	return {
 		text: JSON.stringify({ results: wrapDocumentsInTags(formatted) }),
 		sources: formatted.map((r) => ({
@@ -268,7 +275,7 @@ async function runQueryKnowledgeBase(
 
 async function runSearchDocuments(
 	args: Record<string, unknown>,
-	{ repo, embedder, reranker, signal }: ChatToolContext,
+	{ repo, embedder, reranker, storage, userId, signal }: ChatToolContext,
 ): Promise<ChatToolResult> {
 	const query = String(args.query ?? "");
 	const finalLimit = typeof args.limit === "number" ? args.limit : 5;
@@ -308,7 +315,10 @@ async function runSearchDocuments(
 		};
 	}
 
-	const formatted = results.map(formatSearchResult);
+	const artifactUrls = await resolveArtifactUrls(results, storage, userId);
+	const formatted = results.map((r, i) =>
+		formatSearchResult(r, artifactUrls[i]),
+	);
 	return {
 		text: JSON.stringify({ results: wrapDocumentsInTags(formatted) }),
 		sources: formatted.map((r) => ({

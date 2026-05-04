@@ -57,15 +57,34 @@ export function createMcpRouter(deps: SharedDeps) {
 		}
 	}, SESSION_SWEEP_INTERVAL_MS).unref();
 
-	/**
-	 * Handles a raw MCP protocol request, routing it to an existing session or
-	 * initializing a new one on POST.
-	 */
-	async function handleMcpRequest(
-		req: Request,
-		userId: string,
-		authMethod: "oauth",
-	): Promise<Response> {
+	/** MCP Streamable HTTP endpoint — handles all MCP protocol traffic */
+	router.all("/mcp", async (c) => {
+		const authHeader = c.req.header("authorization");
+		if (!authHeader?.startsWith("Bearer ")) {
+			return c.json({ error: "Unauthorized" }, 401, {
+				"WWW-Authenticate": `Bearer resource_metadata="${baseURL}/.well-known/oauth-protected-resource"`,
+			});
+		}
+
+		const token = authHeader.slice(7);
+		let userId: string | null = null;
+		try {
+			const { payload } = await jwtVerify(token, jwks, {
+				issuer: `${baseURL}/auth`,
+				audience: `${baseURL}/mcp`,
+			});
+			if (payload.sub) userId = payload.sub;
+		} catch (err) {
+			console.warn("MCP JWT verification failed", { error: err });
+		}
+
+		if (!userId) {
+			return c.json({ error: "Unauthorized" }, 401, {
+				"WWW-Authenticate": `Bearer resource_metadata="${baseURL}/.well-known/oauth-protected-resource"`,
+			});
+		}
+
+		const req = c.req.raw;
 		const sessionId = req.headers.get("mcp-session-id");
 
 		// Route to existing session
@@ -113,10 +132,9 @@ export function createMcpRouter(deps: SharedDeps) {
 					req.headers.get("cf-connecting-ip") ||
 					req.headers.get("x-real-ip") ||
 					null;
-				console.log("MCP session opened", {
+				console.info("MCP session opened", {
 					sessionId: sid,
 					userId,
-					authMethod,
 					userAgent: req.headers.get("user-agent"),
 					protocolVersion: req.headers.get("mcp-protocol-version"),
 					clientIp,
@@ -132,42 +150,6 @@ export function createMcpRouter(deps: SharedDeps) {
 		await server.connect(transport);
 
 		return transport.handleRequest(req);
-	}
-
-	router.get("/mcp/sessions", (c) => {
-		const user = c.get("user");
-		if (!user) return c.json({ error: "Unauthorized" }, 401);
-		return c.json({ count: sessions.size });
-	});
-
-	/** MCP Streamable HTTP endpoint — handles all MCP protocol traffic */
-	router.all("/mcp", async (c) => {
-		const authHeader = c.req.header("authorization");
-		if (!authHeader?.startsWith("Bearer ")) {
-			return c.json({ error: "Unauthorized" }, 401, {
-				"WWW-Authenticate": `Bearer resource_metadata="${baseURL}/.well-known/oauth-protected-resource"`,
-			});
-		}
-
-		const token = authHeader.slice(7);
-		let userId: string | null = null;
-		try {
-			const { payload } = await jwtVerify(token, jwks, {
-				issuer: `${baseURL}/auth`,
-				audience: `${baseURL}/mcp`,
-			});
-			if (payload.sub) userId = payload.sub;
-		} catch (err) {
-			console.warn("MCP JWT verification failed", { error: err });
-		}
-
-		if (!userId) {
-			return c.json({ error: "Unauthorized" }, 401, {
-				"WWW-Authenticate": `Bearer resource_metadata="${baseURL}/.well-known/oauth-protected-resource"`,
-			});
-		}
-
-		return handleMcpRequest(c.req.raw, userId, "oauth");
 	});
 
 	return router;

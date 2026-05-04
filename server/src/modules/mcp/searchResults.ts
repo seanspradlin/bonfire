@@ -62,6 +62,8 @@ export interface FormattedSearchResult {
 	tags: string[];
 	similarity: number;
 	content: string;
+	/** Pre-signed URL for the original uploaded artifact, or null if unavailable. */
+	artifactUrl: string | null;
 }
 
 /**
@@ -75,11 +77,16 @@ export interface FormattedSearchResult {
  * Similarity is rounded to 3 decimal places so the JSON output stays compact
  * without sacrificing useful precision.
  *
+ * The `artifactUrl` parameter must be pre-computed by the caller — this
+ * function is kept synchronous to avoid async complexity in the mapping step.
+ *
  * @param result - Raw search result from the document repository.
+ * @param artifactUrl - Pre-signed URL for the original artifact, or null.
  * @returns A leaner object suitable for JSON serialisation in MCP responses.
  */
 export function formatSearchResult(
 	result: SearchResult,
+	artifactUrl: string | null,
 ): FormattedSearchResult {
 	const title = result.parentId
 		? result.title.replace(/ \[\d+\/\d+\]$/, "")
@@ -92,6 +99,7 @@ export function formatSearchResult(
 		tags: result.tags,
 		similarity: Math.round(result.similarity * 1000) / 1000,
 		content: result.content,
+		artifactUrl,
 	};
 }
 

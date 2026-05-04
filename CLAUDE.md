@@ -126,7 +126,7 @@ Embeddings are stored in a pgvector `vector(1536)` column. Similarity is compute
 
 ### Schema highlights
 
-- **documents**: `id` (UUID or `parentId:chunk:NNNN`), `title`, `content`, `tags` (JSONB), `embedding` (vector 1536), `parentId`, `date`, `userId`
+- **documents**: `id` (UUID or `parentId:chunk:NNNN`), `title`, `content`, `tags` (JSONB), `embedding` (vector 1536), `parentId`, `date`, `userId`, `artifactKey` (nullable S3 key for original uploaded file)
 - **auth tables**: `user`, `session`, `account`, `verification`
 - **apiKey**: MCP client tokens (hashed, last-used tracking)
 - **invitations**: team member invite flow
@@ -144,6 +144,11 @@ Embeddings are stored in a pgvector `vector(1536)` column. Similarity is compute
 |---|---|---|
 | `OPENAI_API_KEY` | Yes | Embeddings via `text-embedding-3-small` (1536 dims) |
 | `DATABASE_URL` | Yes | Postgres connection string (see `server/.env.example`) |
+| `AWS_BUCKET` | No | S3/Lightsail bucket name — enables artifact storage when set |
+| `AWS_REGION` | No | AWS region for the bucket (default: `us-east-1`) |
+| `AWS_ACCESS_KEY_ID` | No | AWS credentials for artifact storage |
+| `AWS_SECRET_ACCESS_KEY` | No | AWS credentials for artifact storage |
+| `ARTIFACT_URL_TTL_SECONDS` | No | Pre-signed URL TTL in seconds (default: `3600`) |
 
 Local dev default: `postgresql://bonfire:bonfire@localhost:5432/bonfire` (matches `docker-compose.yml`).
 

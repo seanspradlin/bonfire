@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { basename } from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import type { Context } from "hono";
 import { Hono } from "hono";
@@ -5,6 +7,7 @@ import { requireAuth } from "@/modules/auth";
 import type { EmbeddingProvider } from "@/modules/embedding";
 import { ingestDocument } from "@/modules/ingestion";
 import type { Document, DocumentRepository } from "@/modules/repository";
+import type { StorageProvider } from "@/modules/storage";
 import { createPdfProvider } from "@/modules/upload/pdf";
 import {
 	ALLOWED_IMAGE_MEDIA_TYPES,
@@ -22,6 +25,56 @@ interface UploadDeps {
 	repo: DocumentRepository;
 	embedder: EmbeddingProvider;
 	vision: VisionProvider;
+	storage: StorageProvider | null;
+}
+
+// ---------------------------------------------------------------------------
+// Artifact upload helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Upload a file to S3/Lightsail storage as a best-effort operation.
+ * Returns the storage key on success, or undefined if storage is unavailable
+ * or the upload fails (so ingestion always continues regardless).
+ */
+async function uploadArtifact(
+	storage: StorageProvider | null,
+	docId: string,
+	file: File,
+	data: Buffer,
+): Promise<string | undefined> {
+	if (!storage) return undefined;
+	const key = `artifacts/${docId}/${basename(file.name)}`;
+	try {
+		await storage.upload(key, data, file.type);
+		return key;
+	} catch (err) {
+		console.error("[storage] artifact upload failed, continuing without it", {
+			docId,
+			key,
+			error: err,
+		});
+		return undefined;
+	}
+}
+
+/**
+ * Best-effort artifact cleanup — called when ingestion fails after a successful
+ * upload so we don't leave orphaned objects in S3 with no document row referencing them.
+ */
+async function deleteArtifact(
+	storage: StorageProvider | null,
+	key: string | undefined,
+): Promise<void> {
+	if (!storage || !key) return;
+	try {
+		await storage.delete(key);
+	} catch (err) {
+		console.error("[storage] orphaned artifact could not be deleted", {
+			key,
+			error: err,
+		});
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -96,7 +149,12 @@ function buildUploadResponse(doc: Document, c: Context) {
  * Both endpoints share the same ingestion pipeline — they differ only in how
  * they extract content from the uploaded file.
  */
-export function createUploadRouter({ repo, embedder, vision }: UploadDeps) {
+export function createUploadRouter({
+	repo,
+	embedder,
+	vision,
+	storage,
+}: UploadDeps) {
 	const router = new Hono();
 	const pdfProvider = createPdfProvider();
 
@@ -146,22 +204,29 @@ export function createUploadRouter({ repo, embedder, vision }: UploadDeps) {
 		const fields = parseUploadFields(formData);
 		if (fields instanceof Response) return fields;
 
-		const arrayBuffer = await file.arrayBuffer();
-		const base64Data = Buffer.from(arrayBuffer).toString("base64");
+		// Pre-generate the doc ID so the S3 key and the document row share the same ID.
+		const docId = fields.id ?? randomUUID();
 
+		const arrayBuffer = await file.arrayBuffer();
+		const fileBuffer = Buffer.from(arrayBuffer);
+		const base64Data = fileBuffer.toString("base64");
+
+		// Analyze first so a failed AI call never leaves an orphaned S3 object.
 		const result = await vision.analyzeImage(
 			{ data: base64Data, mediaType: file.type },
 			{ title: fields.titleOverride, context: fields.context },
 		);
+		const artifactKey = await uploadArtifact(storage, docId, file, fileBuffer);
 
 		const doc = await ingestDocument(
 			{
-				id: fields.id,
+				id: docId,
 				title: fields.titleOverride ?? result.title,
 				content: result.content,
 				tags: fields.tags ?? result.tags,
 				date: fields.date,
 				userId: authUser.id,
+				artifactKey,
 			},
 			repo,
 			embedder,
@@ -215,12 +280,17 @@ export function createUploadRouter({ repo, embedder, vision }: UploadDeps) {
 		const fields = parseUploadFields(formData);
 		if (fields instanceof Response) return fields;
 
-		const arrayBuffer = await file.arrayBuffer();
-		const base64Data = Buffer.from(arrayBuffer).toString("base64");
+		// Pre-generate the doc ID so the S3 key and the document row share the same ID.
+		const docId = fields.id ?? randomUUID();
 
-		let result: Awaited<ReturnType<typeof pdfProvider.analyzePdf>>;
+		const arrayBuffer = await file.arrayBuffer();
+		const fileBuffer = Buffer.from(arrayBuffer);
+		const base64Data = fileBuffer.toString("base64");
+
+		// Analyze first so a failed AI call never leaves an orphaned S3 object.
+		let analysisResult: Awaited<ReturnType<typeof pdfProvider.analyzePdf>>;
 		try {
-			result = await pdfProvider.analyzePdf(
+			analysisResult = await pdfProvider.analyzePdf(
 				{ data: base64Data },
 				{ title: fields.titleOverride, context: fields.context },
 			);
@@ -245,15 +315,17 @@ export function createUploadRouter({ repo, embedder, vision }: UploadDeps) {
 			}
 			throw err;
 		}
+		const artifactKey = await uploadArtifact(storage, docId, file, fileBuffer);
 
 		const doc = await ingestDocument(
 			{
-				id: fields.id,
-				title: fields.titleOverride ?? result.title,
-				content: result.content,
-				tags: fields.tags ?? result.tags,
+				id: docId,
+				title: fields.titleOverride ?? analysisResult.title,
+				content: analysisResult.content,
+				tags: fields.tags ?? analysisResult.tags,
 				date: fields.date,
 				userId: authUser.id,
+				artifactKey,
 			},
 			repo,
 			embedder,
@@ -320,24 +392,38 @@ export function createUploadRouter({ repo, embedder, vision }: UploadDeps) {
 		const fields = parseUploadFields(formData);
 		if (fields instanceof Response) return fields;
 
-		const content = await file.text();
+		// Pre-generate the doc ID so the S3 key and the document row share the same ID.
+		const docId = fields.id ?? randomUUID();
+
+		const arrayBuffer = await file.arrayBuffer();
+		const fileBuffer = Buffer.from(arrayBuffer);
+		const content = new TextDecoder().decode(fileBuffer);
 
 		// Derive a readable title from the filename when not overridden.
 		const stemTitle = file.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " ");
 		const title = fields.titleOverride ?? stemTitle;
 
-		const doc = await ingestDocument(
-			{
-				id: fields.id,
-				title,
-				content,
-				tags: fields.tags,
-				date: fields.date,
-				userId: authUser.id,
-			},
-			repo,
-			embedder,
-		);
+		const artifactKey = await uploadArtifact(storage, docId, file, fileBuffer);
+
+		let doc: Document;
+		try {
+			doc = await ingestDocument(
+				{
+					id: docId,
+					title,
+					content,
+					tags: fields.tags,
+					date: fields.date,
+					userId: authUser.id,
+					artifactKey,
+				},
+				repo,
+				embedder,
+			);
+		} catch (err) {
+			await deleteArtifact(storage, artifactKey);
+			throw err;
+		}
 
 		return buildUploadResponse(doc, c);
 	});

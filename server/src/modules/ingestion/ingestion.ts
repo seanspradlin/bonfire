@@ -28,6 +28,8 @@ export async function ingestDocument(
 		tags?: string[];
 		date?: string;
 		userId?: string;
+		/** S3/Lightsail storage key for the original uploaded file, if any. */
+		artifactKey?: string;
 	},
 	repo: DocumentRepository,
 	embedder: EmbeddingProvider,

@@ -17,6 +17,7 @@ import { createHealthRouter } from "@/modules/health";
 import { createInvitationsRouter } from "@/modules/invitations";
 import { createMcpRouter } from "@/modules/mcp";
 import { PgDocumentRepository } from "@/modules/repository";
+import { createStorageProvider } from "@/modules/storage";
 import { createUploadRouter } from "@/modules/upload";
 import { createUsersRouter } from "@/modules/users";
 import { createVisionProvider } from "@/modules/vision";
@@ -29,6 +30,7 @@ const repo = new PgDocumentRepository();
 const embedder = createEmbeddingProvider();
 const vision = createVisionProvider();
 const reranker = createRerankProvider();
+const storage = createStorageProvider();
 
 // ---------------------------------------------------------------------------
 // HTTP server — mount route modules
@@ -66,9 +68,9 @@ app.route("/", createAuthRouter());
 app.route("/", createUsersRouter());
 app.route("/", createDocumentsRouter({ repo, embedder }));
 app.route("/", createInvitationsRouter());
-app.route("/", createMcpRouter({ repo, embedder, vision, reranker }));
-app.route("/", createUploadRouter({ repo, embedder, vision }));
-app.route("/", createChatRouter({ repo, embedder, reranker }));
+app.route("/", createMcpRouter({ repo, embedder, vision, reranker, storage }));
+app.route("/", createUploadRouter({ repo, embedder, vision, storage }));
+app.route("/", createChatRouter({ repo, embedder, reranker, storage }));
 
 await seedInitialAdminUser();
 

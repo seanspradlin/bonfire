@@ -21,6 +21,7 @@ function makeResult(
 		date: null,
 		parentId: null,
 		userId: null,
+		artifactKey: null,
 		...overrides,
 	};
 }
@@ -32,7 +33,7 @@ function makeResult(
 describe("formatSearchResult", () => {
 	it("rounds similarity to 3 decimal places", () => {
 		const result = makeResult({ id: "doc1", similarity: 0.98765432 });
-		expect(formatSearchResult(result).similarity).toBe(0.988);
+		expect(formatSearchResult(result, null).similarity).toBe(0.988);
 	});
 
 	it("preserves the title for a top-level document (parentId is null)", () => {
@@ -42,7 +43,7 @@ describe("formatSearchResult", () => {
 			title: "My Doc [1/3]",
 			parentId: null,
 		});
-		expect(formatSearchResult(result).title).toBe("My Doc [1/3]");
+		expect(formatSearchResult(result, null).title).toBe("My Doc [1/3]");
 	});
 
 	it("strips the [i/N] chunk suffix from a chunk document (parentId is set)", () => {
@@ -52,7 +53,7 @@ describe("formatSearchResult", () => {
 			title: "My Doc [2/5]",
 			parentId: "doc1",
 		});
-		expect(formatSearchResult(result).title).toBe("My Doc");
+		expect(formatSearchResult(result, null).title).toBe("My Doc");
 	});
 
 	it("does not strip if the title does not end with the chunk pattern", () => {
@@ -62,7 +63,7 @@ describe("formatSearchResult", () => {
 			title: "No Suffix Here",
 			parentId: "doc1",
 		});
-		expect(formatSearchResult(result).title).toBe("No Suffix Here");
+		expect(formatSearchResult(result, null).title).toBe("No Suffix Here");
 	});
 
 	it("passes through all other fields unchanged", () => {
@@ -73,11 +74,30 @@ describe("formatSearchResult", () => {
 			content: "Hello",
 			parentId: null,
 		});
-		const formatted = formatSearchResult(result);
+		const formatted = formatSearchResult(result, null);
 		expect(formatted.id).toBe("doc1");
 		expect(formatted.tags).toEqual(["a", "b"]);
 		expect(formatted.content).toBe("Hello");
 		expect(formatted.parentId).toBeNull();
+	});
+
+	it("includes the artifactUrl in the formatted result", () => {
+		const result = makeResult({
+			id: "doc1",
+			similarity: 0.9,
+			artifactKey: "artifacts/doc1/file.pdf",
+		});
+		const url = "https://example.com/presigned-url";
+		expect(formatSearchResult(result, url).artifactUrl).toBe(url);
+	});
+
+	it("passes null artifactUrl through when no artifact exists", () => {
+		const result = makeResult({
+			id: "doc1",
+			similarity: 0.9,
+			artifactKey: null,
+		});
+		expect(formatSearchResult(result, null).artifactUrl).toBeNull();
 	});
 });
 

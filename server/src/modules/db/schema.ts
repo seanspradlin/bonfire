@@ -22,6 +22,7 @@ export const documents = pgTable(
 		updatedAt: text("updated_at").notNull(),
 		date: text("date"),
 		parentId: text("parent_id"),
+		artifactKey: text("artifact_key"),
 	},
 	(t) => [
 		index("documents_parent_id_idx").on(t.parentId),

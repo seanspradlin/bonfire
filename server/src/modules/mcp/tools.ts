@@ -7,7 +7,8 @@ import {
 	deduplicateByBestSimilarity,
 	formatSearchResult,
 } from "@/modules/mcp/searchResults";
-import type { DocumentRepository } from "@/modules/repository";
+import type { DocumentRepository, SearchResult } from "@/modules/repository";
+import type { StorageProvider } from "@/modules/storage";
 import type { VisionProvider } from "@/modules/vision";
 
 // ---------------------------------------------------------------------------
@@ -19,6 +20,52 @@ export interface SharedDeps {
 	embedder: EmbeddingProvider;
 	vision: VisionProvider;
 	reranker: RerankProvider | null;
+	storage: StorageProvider | null;
+}
+
+// ---------------------------------------------------------------------------
+// Artifact URL resolution
+// ---------------------------------------------------------------------------
+
+/** TTL for pre-signed artifact URLs, in seconds (default: 1 hour). */
+const _rawTtl = Number(process.env.ARTIFACT_URL_TTL_SECONDS);
+const ARTIFACT_URL_TTL_SECONDS =
+	Number.isFinite(_rawTtl) && _rawTtl > 0 && _rawTtl <= 604800 ? _rawTtl : 3600;
+
+/**
+ * Resolve pre-signed URLs for a batch of search results.
+ * Results without an artifactKey resolve to null.
+ * When `userId` is provided, URLs are only generated for documents owned by
+ * that user — other users' artifacts remain readable as content but their
+ * original files are not exposed via pre-signed links.
+ * Individual failures are caught and logged — a bad URL on one result
+ * should never block the entire response.
+ */
+export async function resolveArtifactUrls(
+	results: SearchResult[],
+	storage: StorageProvider | null,
+	userId?: string,
+): Promise<(string | null)[]> {
+	if (!storage) return results.map(() => null);
+
+	return Promise.all(
+		results.map(async (r) => {
+			if (!r.artifactKey) return null;
+			if (userId && r.userId && r.userId !== userId) return null;
+			try {
+				return await storage.getPresignedUrl(
+					r.artifactKey,
+					ARTIFACT_URL_TTL_SECONDS,
+				);
+			} catch (err) {
+				console.error("[storage] failed to generate pre-signed URL", {
+					artifactKey: r.artifactKey,
+					error: err,
+				});
+				return null;
+			}
+		}),
+	);
 }
 
 export interface ServerDeps extends SharedDeps {
@@ -34,6 +81,7 @@ export function createServer({
 	embedder,
 	vision,
 	reranker,
+	storage,
 	userId,
 }: ServerDeps): McpServer {
 	const server = new McpServer({
@@ -177,11 +225,17 @@ export function createServer({
 				};
 			}
 
+			// Pre-compute artifact URLs before formatting (formatSearchResult is sync).
+			const artifactUrls = await resolveArtifactUrls(results, storage, userId);
+			const formatted = results.map((r, i) =>
+				formatSearchResult(r, artifactUrls[i]),
+			);
+
 			return {
 				content: [
 					{
 						type: "text",
-						text: JSON.stringify(results.map(formatSearchResult), null, 2),
+						text: JSON.stringify(formatted, null, 2),
 					},
 				],
 			};
@@ -211,8 +265,31 @@ export function createServer({
 				};
 			}
 
+			// Only generate a pre-signed URL if the caller owns the document.
+			let artifactUrl: string | null = null;
+			const callerOwnsDoc = !doc.userId || doc.userId === userId;
+			if (doc.artifactKey && storage && callerOwnsDoc) {
+				try {
+					artifactUrl = await storage.getPresignedUrl(
+						doc.artifactKey,
+						ARTIFACT_URL_TTL_SECONDS,
+					);
+				} catch (err) {
+					console.error("[storage] failed to generate pre-signed URL", {
+						artifactKey: doc.artifactKey,
+						error: err,
+					});
+				}
+			}
+
+			const { artifactKey: _key, ...docFields } = doc;
 			return {
-				content: [{ type: "text", text: JSON.stringify(doc, null, 2) }],
+				content: [
+					{
+						type: "text",
+						text: JSON.stringify({ ...docFields, artifactUrl }, null, 2),
+					},
+				],
 			};
 		},
 	);
@@ -340,11 +417,17 @@ export function createServer({
 				};
 			}
 
+			// Pre-compute artifact URLs before formatting (formatSearchResult is sync).
+			const artifactUrls = await resolveArtifactUrls(results, storage, userId);
+			const formatted = results.map((r, i) =>
+				formatSearchResult(r, artifactUrls[i]),
+			);
+
 			return {
 				content: [
 					{
 						type: "text",
-						text: JSON.stringify(results.map(formatSearchResult), null, 2),
+						text: JSON.stringify(formatted, null, 2),
 					},
 				],
 			};

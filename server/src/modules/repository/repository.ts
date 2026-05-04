@@ -16,6 +16,8 @@ export interface Document {
 	date: string | null;
 	parentId: string | null;
 	userId: string | null;
+	/** S3/Lightsail storage key for the original uploaded file, if any. */
+	artifactKey: string | null;
 }
 
 export interface SearchResult extends Document {
@@ -41,6 +43,7 @@ export interface DocumentRepository {
 		parentId?: string;
 		embedding?: number[];
 		userId?: string;
+		artifactKey?: string;
 	}): Promise<Document>;
 
 	/** Delete all chunks belonging to a parent document. */
@@ -61,6 +64,7 @@ export interface DocumentRepository {
 			date?: string;
 			embedding?: number[];
 			userId?: string;
+			artifactKey?: string;
 		};
 		chunks: Array<{
 			id: string;
@@ -116,6 +120,7 @@ function rowToDocument(row: {
 	date: string | null;
 	parentId: string | null;
 	userId: string | null;
+	artifactKey: string | null;
 }): Document {
 	return {
 		id: row.id,
@@ -127,6 +132,7 @@ function rowToDocument(row: {
 		date: row.date,
 		parentId: row.parentId,
 		userId: row.userId,
+		artifactKey: row.artifactKey,
 	};
 }
 
@@ -144,6 +150,7 @@ export class PgDocumentRepository implements DocumentRepository {
 		parentId?: string;
 		embedding?: number[];
 		userId?: string;
+		artifactKey?: string;
 	}): Promise<Document> {
 		const now = new Date().toISOString();
 		const id = params.id ?? randomUUID();
@@ -161,6 +168,7 @@ export class PgDocumentRepository implements DocumentRepository {
 				date: params.date ?? null,
 				parentId: params.parentId ?? null,
 				userId: params.userId ?? null,
+				artifactKey: params.artifactKey ?? null,
 			})
 			.onConflictDoUpdate({
 				target: documents.id,
@@ -177,12 +185,18 @@ export class PgDocumentRepository implements DocumentRepository {
 							? params.parentId
 							: sql`${documents.parentId}`,
 					userId: sql`${documents.userId}`,
+					// Preserve the existing artifact key on conflict if not re-supplied.
+					artifactKey:
+						params.artifactKey !== undefined
+							? params.artifactKey
+							: sql`${documents.artifactKey}`,
 				},
 			})
 			.returning({
 				createdAt: documents.createdAt,
 				date: documents.date,
 				parentId: documents.parentId,
+				artifactKey: documents.artifactKey,
 			});
 
 		return {
@@ -195,6 +209,7 @@ export class PgDocumentRepository implements DocumentRepository {
 			date: row.date,
 			parentId: row.parentId,
 			userId: params.userId ?? null,
+			artifactKey: row.artifactKey,
 		};
 	}
 
@@ -211,6 +226,7 @@ export class PgDocumentRepository implements DocumentRepository {
 			date?: string;
 			embedding?: number[];
 			userId?: string;
+			artifactKey?: string;
 		};
 		chunks: Array<{
 			id: string;
@@ -243,6 +259,7 @@ export class PgDocumentRepository implements DocumentRepository {
 					date: params.parent.date ?? null,
 					parentId: null,
 					userId: params.parent.userId ?? null,
+					artifactKey: params.parent.artifactKey ?? null,
 				})
 				.onConflictDoUpdate({
 					target: documents.id,
@@ -258,9 +275,18 @@ export class PgDocumentRepository implements DocumentRepository {
 								: sql`${documents.date}`,
 						parentId: null,
 						userId: sql`${documents.userId}`,
+						// Preserve the existing artifact key on conflict if not re-supplied.
+						artifactKey:
+							params.parent.artifactKey !== undefined
+								? params.parent.artifactKey
+								: sql`${documents.artifactKey}`,
 					},
 				})
-				.returning({ createdAt: documents.createdAt, date: documents.date });
+				.returning({
+					createdAt: documents.createdAt,
+					date: documents.date,
+					artifactKey: documents.artifactKey,
+				});
 
 			for (const chunk of params.chunks) {
 				await tx
@@ -276,6 +302,7 @@ export class PgDocumentRepository implements DocumentRepository {
 						date: chunk.date ?? null,
 						parentId: chunk.parentId,
 						userId: chunk.userId ?? null,
+						artifactKey: null,
 					})
 					.onConflictDoUpdate({
 						target: documents.id,
@@ -303,6 +330,7 @@ export class PgDocumentRepository implements DocumentRepository {
 				date: parentRow.date,
 				parentId: null,
 				userId: params.parent.userId ?? null,
+				artifactKey: parentRow.artifactKey,
 			};
 		});
 	}
@@ -334,6 +362,7 @@ export class PgDocumentRepository implements DocumentRepository {
 				date: documents.date,
 				parentId: documents.parentId,
 				userId: documents.userId,
+				artifactKey: documents.artifactKey,
 				similarity: sql<number>`1 - (${documents.embedding} <=> ${queryVec})`,
 			})
 			.from(documents)
@@ -368,6 +397,7 @@ export class PgDocumentRepository implements DocumentRepository {
 				date: documents.date,
 				parentId: documents.parentId,
 				userId: documents.userId,
+				artifactKey: documents.artifactKey,
 			})
 			.from(documents)
 			.where(eq(documents.id, id))
@@ -389,6 +419,7 @@ export class PgDocumentRepository implements DocumentRepository {
 				date: documents.date,
 				parentId: documents.parentId,
 				userId: documents.userId,
+				artifactKey: documents.artifactKey,
 			})
 			.from(documents)
 			.where(
