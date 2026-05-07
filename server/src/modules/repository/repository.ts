@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, documents } from "@/modules/db";
 
 // ---------------------------------------------------------------------------
@@ -94,6 +94,12 @@ export interface DocumentRepository {
 
 	/** Retrieve a single document by ID. Returns null if not found. */
 	getById(id: string): Promise<Document | null>;
+
+	/**
+	 * Fetch titles for a batch of document IDs in a single query.
+	 * Returns a map of id → title. IDs not found (deleted, chunks) are omitted.
+	 */
+	getTitlesByIds(ids: string[]): Promise<Record<string, string>>;
 
 	/**
 	 * List top-level documents (parentId IS NULL) optionally filtered by tag
@@ -405,6 +411,17 @@ export class PgDocumentRepository implements DocumentRepository {
 
 		if (!rows[0]) return null;
 		return rowToDocument(rows[0]);
+	}
+
+	async getTitlesByIds(ids: string[]): Promise<Record<string, string>> {
+		if (ids.length === 0) return {};
+
+		const rows = await db
+			.select({ id: documents.id, title: documents.title })
+			.from(documents)
+			.where(and(inArray(documents.id, ids), isNull(documents.parentId)));
+
+		return Object.fromEntries(rows.map((r) => [r.id, r.title]));
 	}
 
 	async list(params?: { tag?: string; userId?: string }): Promise<Document[]> {

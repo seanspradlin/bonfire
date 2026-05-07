@@ -7,10 +7,22 @@ export default defineConfig({
 	plugins: [tailwindcss(), sveltekit()],
 	server: {
 		proxy: {
+			'/auth': {
+				target: 'http://localhost:3000',
+				changeOrigin: false
+			},
 			'/api': {
 				target: 'http://localhost:3000',
 				changeOrigin: false,
 				rewrite: (path) => path.replace(/^\/api/, '')
+			},
+			'/mcp': {
+				target: 'http://localhost:3000',
+				changeOrigin: false
+			},
+			'/.well-known': {
+				target: 'http://localhost:3000',
+				changeOrigin: false
 			}
 		}
 	},

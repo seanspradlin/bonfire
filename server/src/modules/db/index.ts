@@ -6,4 +6,5 @@ export {
 	session,
 	user,
 	verification,
+	wikiPages,
 } from "./schema";

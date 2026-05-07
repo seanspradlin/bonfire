@@ -225,3 +225,31 @@ export const oauthConsent = pgTable("oauth_consent", {
 });
 
 export type DocumentRow = typeof documents.$inferSelect;
+
+export const wikiPages = pgTable(
+	"wiki_pages",
+	{
+		slug: text("slug").primaryKey(),
+		title: text("title").notNull(),
+		content: text("content").notNull(),
+		embedding: vector("embedding", { dimensions: 1536 }),
+		tags: jsonb("tags").notNull().$type<string[]>().default([]),
+		sourceDocumentIds: jsonb("source_document_ids")
+			.notNull()
+			.$type<string[]>()
+			.default([]),
+		createdAt: text("created_at").notNull(),
+		updatedAt: text("updated_at").notNull(),
+		userId: text("user_id"),
+	},
+	(t) => [
+		index("wiki_pages_user_id_idx").on(t.userId),
+		// HNSW index accelerates cosine similarity (<=> operator) queries via pgvector
+		index("wiki_pages_embedding_hnsw_idx").using(
+			"hnsw",
+			t.embedding.op("vector_cosine_ops"),
+		),
+	],
+);
+
+export type WikiPageRow = typeof wikiPages.$inferSelect;

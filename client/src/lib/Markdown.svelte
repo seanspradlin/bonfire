@@ -1,8 +1,9 @@
 <script lang="ts">
 	import DOMPurify from 'isomorphic-dompurify';
 	import { marked } from 'marked';
+	import { addAnchorIds } from '$lib/utils/toc';
 
-	let { text }: { text: string } = $props();
+	let { text, anchors = false }: { text: string; anchors?: boolean } = $props();
 
 	// Register the link-hardening hook exactly once per module lifetime.
 	// The hook runs after DOMPurify strips dangerous attributes so our additions
@@ -13,9 +14,12 @@
 		hookRegistered = true;
 		DOMPurify.addHook('afterSanitizeAttributes', (node) => {
 			if (node.tagName === 'A') {
-				// Force all links to open in a new tab and prevent opener access.
-				node.setAttribute('target', '_blank');
-				node.setAttribute('rel', 'noopener noreferrer nofollow');
+				const href = node.getAttribute('href') ?? '';
+				// Internal paths navigate within the app; external links open in a new tab.
+				if (!href.startsWith('/')) {
+					node.setAttribute('target', '_blank');
+					node.setAttribute('rel', 'noopener noreferrer nofollow');
+				}
 			}
 		});
 	}
@@ -24,11 +28,15 @@
 	// (single-newline → <br>, fenced code blocks, tables, strikethrough).
 	const html = $derived.by(() => {
 		ensureHook();
-		const raw = marked.parse(text, { async: false, gfm: true, breaks: true }) as string;
+		let raw = marked.parse(text, { async: false, gfm: true, breaks: true }) as string;
+		if (anchors) raw = addAnchorIds(raw);
 		// Restrict URIs to http(s) and mailto only — blocks javascript: and data: URLs.
 		return DOMPurify.sanitize(raw, {
 			USE_PROFILES: { html: true },
-			ALLOWED_URI_REGEXP: /^(?:https?|mailto):/i
+			// Allow https/http/mailto for external links and bare paths for internal navigation.
+			ALLOWED_URI_REGEXP: /^(?:https?|mailto):|^\/(?!\/)/i,
+			// Preserve id attributes so heading anchors work.
+			ADD_ATTR: anchors ? ['id'] : [],
 		});
 	});
 </script>
@@ -65,7 +73,14 @@
 	.md-body :global(h4) {
 		font-weight: 600;
 		line-height: 1.3;
-		margin: 0.4em 0 0.2em;
+		margin: 1.4em 0 0.3em;
+	}
+
+	.md-body :global(h1:first-child),
+	.md-body :global(h2:first-child),
+	.md-body :global(h3:first-child),
+	.md-body :global(h4:first-child) {
+		margin-top: 0;
 	}
 
 	.md-body :global(h1) {
@@ -152,7 +167,7 @@
 	.md-body :global(hr) {
 		border: 0;
 		border-top: 1px solid var(--border);
-		margin: 0.6em 0;
+		margin: 2em 0;
 	}
 
 	.md-body :global(table) {

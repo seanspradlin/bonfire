@@ -21,6 +21,7 @@ import { createStorageProvider } from "@/modules/storage";
 import { createUploadRouter } from "@/modules/upload";
 import { createUsersRouter } from "@/modules/users";
 import { createVisionProvider } from "@/modules/vision";
+import { createWikiRouter, PgWikiPageRepository } from "@/modules/wiki";
 
 // ---------------------------------------------------------------------------
 // Bootstrap — construct shared singletons once
@@ -31,6 +32,7 @@ const embedder = createEmbeddingProvider();
 const vision = createVisionProvider();
 const reranker = createRerankProvider();
 const storage = createStorageProvider();
+const wikiRepo = new PgWikiPageRepository();
 
 // ---------------------------------------------------------------------------
 // HTTP server — mount route modules
@@ -68,7 +70,11 @@ app.route("/", createAuthRouter());
 app.route("/", createUsersRouter());
 app.route("/", createDocumentsRouter({ repo, embedder }));
 app.route("/", createInvitationsRouter());
-app.route("/", createMcpRouter({ repo, embedder, vision, reranker, storage }));
+app.route("/", createWikiRouter({ wikiRepo, repo }));
+app.route(
+	"/",
+	createMcpRouter({ repo, embedder, vision, reranker, storage, wikiRepo }),
+);
 app.route("/", createUploadRouter({ repo, embedder, vision, storage }));
 app.route("/", createChatRouter({ repo, embedder, reranker, storage }));
 

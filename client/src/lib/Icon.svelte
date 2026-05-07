@@ -22,7 +22,8 @@
 		sun: `<circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.1 3.1l1.4 1.4M11.5 11.5l1.4 1.4M3.1 12.9l1.4-1.4M11.5 4.5l1.4-1.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>`,
 		moon: `<path d="M13.5 10A6 6 0 016 2.5c0-.2 0-.4.01-.6A7 7 0 1013.5 10z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>`,
 		file: `<path d="M10 1H4a1 1 0 00-1 1v12a1 1 0 001 1h8a1 1 0 001-1V5l-3-4z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M10 1v4h3" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M5.5 7h5M5.5 9h5M5.5 11h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>`,
-		pencil: `<path d="M11.5 2.5l2 2L5 13l-2.5.5.5-2.5L11.5 2.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`
+		pencil: `<path d="M11.5 2.5l2 2L5 13l-2.5.5.5-2.5L11.5 2.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
+		book: `<path d="M8 4C6.5 3 4.5 2.5 2 3v10c2.5-.5 4.5 0 6 1 1.5-1 3.5-1.5 6-1V3c-2.5-.5-4.5 0-6 1z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8 4v10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>`
 	};
 </script>
 

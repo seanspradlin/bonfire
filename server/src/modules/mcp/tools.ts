@@ -10,6 +10,7 @@ import {
 import type { DocumentRepository, SearchResult } from "@/modules/repository";
 import type { StorageProvider } from "@/modules/storage";
 import type { VisionProvider } from "@/modules/vision";
+import type { WikiPageRepository } from "@/modules/wiki";
 
 // ---------------------------------------------------------------------------
 // Shared dependency shape
@@ -21,6 +22,7 @@ export interface SharedDeps {
 	vision: VisionProvider;
 	reranker: RerankProvider | null;
 	storage: StorageProvider | null;
+	wikiRepo: WikiPageRepository;
 }
 
 // ---------------------------------------------------------------------------
@@ -82,6 +84,7 @@ export function createServer({
 	vision,
 	reranker,
 	storage,
+	wikiRepo,
 	userId,
 }: ServerDeps): McpServer {
 	const server = new McpServer({
@@ -561,6 +564,372 @@ export function createServer({
 			};
 		},
 	);
+
+	// -------------------------------------------------------------------------
+	// Tool: create_wiki_page
+	// -------------------------------------------------------------------------
+
+	server.registerTool(
+		"create_wiki_page",
+		{
+			title: "Create Wiki Page",
+			description:
+				"Create a new wiki page synthesized from source documents. " +
+				"Use this when no wiki page exists for the concept. " +
+				"Check with get_wiki_page first to confirm the slug is available.",
+			inputSchema: {
+				slug: z
+					.string()
+					.regex(
+						/^[a-z0-9]+(?:-[a-z0-9]+)*$/,
+						"Slug must be lowercase alphanumeric words separated by hyphens (e.g. 'team-onboarding')",
+					)
+					.describe(
+						"URL-safe identifier for the page (e.g. 'team-onboarding', 'api-rate-limits')",
+					),
+				title: z.string().describe("Human-readable title for the wiki page"),
+				content: z
+					.string()
+					.describe("Full wiki page content in markdown format"),
+				tags: z
+					.array(z.string())
+					.optional()
+					.describe("Tags for categorisation and filtering"),
+				source_document_ids: z
+					.array(z.string())
+					.optional()
+					.describe(
+						"IDs of the source documents this wiki page was synthesized from",
+					),
+			},
+		},
+		async ({ slug, title, content, tags, source_document_ids }) => {
+			// Guard against overwriting an existing page — the LLM should use
+			// update_wiki_page for that to avoid accidental data loss.
+			const existing = await wikiRepo.getBySlug(slug);
+			if (existing) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: `A wiki page already exists for slug "${slug}". Use update_wiki_page to modify it instead.`,
+						},
+					],
+					isError: true,
+				};
+			}
+
+			const embedding = await embedder.embed(content);
+			const page = await wikiRepo.upsertBySlug({
+				slug,
+				title,
+				content,
+				tags,
+				sourceDocumentIds: source_document_ids,
+				embedding,
+				userId,
+			});
+
+			return {
+				content: [
+					{
+						type: "text",
+						text: JSON.stringify(
+							{
+								slug: page.slug,
+								title: page.title,
+								tags: page.tags,
+								createdAt: page.createdAt,
+								updatedAt: page.updatedAt,
+							},
+							null,
+							2,
+						),
+					},
+				],
+			};
+		},
+	);
+
+	// -------------------------------------------------------------------------
+	// Tool: update_wiki_page
+	// -------------------------------------------------------------------------
+
+	server.registerTool(
+		"update_wiki_page",
+		{
+			title: "Update Wiki Page",
+			description:
+				"Update an existing wiki page. Use get_wiki_page first to read the current " +
+				"content before overwriting. Fails if the page does not exist — use " +
+				"create_wiki_page for new pages.",
+			inputSchema: {
+				slug: z.string().describe("Slug of the wiki page to update"),
+				title: z
+					.string()
+					.optional()
+					.describe("New title — if omitted, the existing title is preserved"),
+				content: z
+					.string()
+					.describe("New full wiki page content in markdown format"),
+				tags: z
+					.array(z.string())
+					.optional()
+					.describe("Updated tags — if omitted, existing tags are preserved"),
+				source_document_ids: z
+					.array(z.string())
+					.optional()
+					.describe("Updated source document IDs"),
+			},
+		},
+		async ({ slug, title, content, tags, source_document_ids }) => {
+			const existing = await wikiRepo.getBySlug(slug);
+			if (!existing) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: `No wiki page found for slug "${slug}". Use create_wiki_page to create a new page instead.`,
+						},
+					],
+					isError: true,
+				};
+			}
+
+			const embedding = await embedder.embed(content);
+			const page = await wikiRepo.upsertBySlug({
+				slug,
+				// Fall back to the existing title if not provided
+				title: title ?? existing.title,
+				content,
+				tags: tags ?? existing.tags,
+				sourceDocumentIds: source_document_ids ?? existing.sourceDocumentIds,
+				embedding,
+				userId,
+			});
+
+			return {
+				content: [
+					{
+						type: "text",
+						text: JSON.stringify(
+							{
+								slug: page.slug,
+								title: page.title,
+								tags: page.tags,
+								updatedAt: page.updatedAt,
+							},
+							null,
+							2,
+						),
+					},
+				],
+			};
+		},
+	);
+
+	// -------------------------------------------------------------------------
+	// Tool: delete_wiki_page
+	// -------------------------------------------------------------------------
+
+	server.registerTool(
+		"delete_wiki_page",
+		{
+			title: "Delete Wiki Page",
+			description:
+				"Permanently delete a wiki page by slug. Use during lint when a page is confirmed " +
+				"orphaned, superseded, or a duplicate. This cannot be undone.",
+			inputSchema: {
+				slug: z.string().describe("Slug of the wiki page to delete"),
+			},
+		},
+		async ({ slug }) => {
+			const deleted = await wikiRepo.delete(slug);
+
+			if (!deleted) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: `No wiki page found for slug "${slug}".`,
+						},
+					],
+					isError: true,
+				};
+			}
+
+			return {
+				content: [
+					{
+						type: "text",
+						text: `Wiki page "${slug}" has been permanently deleted.`,
+					},
+				],
+			};
+		},
+	);
+
+	// -------------------------------------------------------------------------
+	// Tool: get_wiki_page
+	// -------------------------------------------------------------------------
+
+	server.registerTool(
+		"get_wiki_page",
+		{
+			title: "Get Wiki Page",
+			description:
+				"Retrieve a wiki page by its slug. Returns null-like result when no page " +
+				"exists — use this to detect gaps before creating new pages or to read " +
+				"current content before updating.",
+			inputSchema: {
+				slug: z.string().describe("Slug of the wiki page to retrieve"),
+			},
+		},
+		async ({ slug }) => {
+			const page = await wikiRepo.getBySlug(slug);
+
+			if (!page) {
+				// Not isError — a missing page is expected during gap detection
+				return {
+					content: [
+						{
+							type: "text",
+							text: `No wiki page found for slug "${slug}". Use create_wiki_page to synthesize one.`,
+						},
+					],
+				};
+			}
+
+			return {
+				content: [
+					{
+						type: "text",
+						text: JSON.stringify(page, null, 2),
+					},
+				],
+			};
+		},
+	);
+
+	// -------------------------------------------------------------------------
+	// Tool: list_wiki_pages
+	// -------------------------------------------------------------------------
+
+	server.registerTool(
+		"list_wiki_pages",
+		{
+			title: "List Wiki Pages",
+			description:
+				"List all wiki pages, optionally filtered by tag. Use this to browse " +
+				"existing coverage and identify gaps before synthesizing new pages.",
+			inputSchema: {
+				tag: z.string().optional().describe("Filter wiki pages by this tag"),
+				limit: z
+					.number()
+					.int()
+					.min(1)
+					.max(100)
+					.optional()
+					.describe("Maximum number of pages to return (default: all)"),
+				offset: z
+					.number()
+					.int()
+					.min(0)
+					.optional()
+					.describe("Number of pages to skip for pagination (default: 0)"),
+			},
+		},
+		async ({ tag, limit, offset }) => {
+			const pages = await wikiRepo.list(
+				tag || limit !== undefined || offset !== undefined
+					? { tag, limit, offset }
+					: undefined,
+			);
+
+			if (pages.length === 0) {
+				return {
+					content: [{ type: "text", text: "The wiki is empty." }],
+				};
+			}
+
+			const summary = pages.map((p) => ({
+				slug: p.slug,
+				title: p.title,
+				tags: p.tags,
+				updatedAt: p.updatedAt,
+			}));
+
+			return {
+				content: [{ type: "text", text: JSON.stringify(summary, null, 2) }],
+			};
+		},
+	);
+
+	// -------------------------------------------------------------------------
+	// Tool: search_wiki
+	// -------------------------------------------------------------------------
+
+	server.registerTool(
+		"search_wiki",
+		{
+			title: "Search Wiki",
+			description:
+				"Search wiki pages by semantic similarity. Returns matching pages ranked by " +
+				"relevance. If no results, the concept likely has no wiki page yet — flag " +
+				"this gap to the user.",
+			inputSchema: {
+				query: z.string().describe("Natural language search query"),
+				limit: z
+					.number()
+					.int()
+					.min(1)
+					.max(10)
+					.optional()
+					.describe("Maximum number of results to return (default: 5)"),
+				tag: z
+					.string()
+					.optional()
+					.describe("Restrict results to wiki pages with this tag"),
+			},
+		},
+		async ({ query, limit, tag }) => {
+			const embedding = await embedder.embed(query);
+			const results = await wikiRepo.search({
+				embedding,
+				limit: limit ?? 5,
+				tag,
+			});
+
+			if (results.length === 0) {
+				// Not isError — absence of results is meaningful signal for gap detection
+				return {
+					content: [
+						{
+							type: "text",
+							text:
+								"No wiki pages found matching your query. The wiki may not yet cover " +
+								"this topic — consider using create_wiki_page to synthesize one.",
+						},
+					],
+				};
+			}
+
+			// Return summary only; the LLM should call get_wiki_page for full content
+			const summary = results.map((r) => ({
+				slug: r.slug,
+				title: r.title,
+				tags: r.tags,
+				updatedAt: r.updatedAt,
+				similarity: r.similarity,
+			}));
+
+			return {
+				content: [{ type: "text", text: JSON.stringify(summary, null, 2) }],
+			};
+		},
+	);
+
+	// -------------------------------------------------------------------------
 
 	return server;
 }

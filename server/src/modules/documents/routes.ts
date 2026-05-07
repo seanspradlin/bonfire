@@ -5,6 +5,10 @@ import type { EmbeddingProvider } from "@/modules/embedding";
 import { ingestDocument } from "@/modules/ingestion";
 import type { Document, DocumentRepository } from "@/modules/repository";
 
+const titlesSchema = z.object({
+	ids: z.array(z.string()).min(1).max(100),
+});
+
 const updateSchema = z.object({
 	title: z.string().optional(),
 	content: z.string().optional(),
@@ -46,6 +50,30 @@ export function createDocumentsRouter(deps: {
 		);
 
 		return c.json({ documents: docs });
+	});
+
+	router.post("/documents/titles", async (c) => {
+		const authUser = requireAuth(c);
+		if (authUser instanceof Response) return authUser;
+		if (!canEdit(authUser)) return c.json({ error: "Forbidden" }, 403);
+
+		let raw: unknown;
+		try {
+			raw = await c.req.json();
+		} catch {
+			return c.json({ error: "Invalid JSON body" }, 400);
+		}
+
+		const parsed = titlesSchema.safeParse(raw);
+		if (!parsed.success) {
+			return c.json(
+				{ error: parsed.error.issues[0]?.message ?? "Invalid body" },
+				400,
+			);
+		}
+
+		const titles = await repo.getTitlesByIds(parsed.data.ids);
+		return c.json({ titles });
 	});
 
 	router.get("/documents/:id", async (c) => {

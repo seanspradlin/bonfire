@@ -17,7 +17,7 @@
 
 	const currentPath = $derived($page.url.pathname.replace(/^\//, ''));
 
-	type NavItemId = 'chat' | 'documents' | 'upload' | 'dashboard' | 'settings';
+	type NavItemId = 'chat' | 'documents' | 'upload' | 'wiki' | 'dashboard' | 'settings';
 	type NavItem = { id: NavItemId; label: string; icon: string };
 
 	const canEdit = $derived(['admin', 'editor'].includes(data.user?.role ?? ''));
@@ -25,7 +25,8 @@
 	const topNavItems = $derived<NavItem[]>([
 		{ id: 'chat', label: 'Chat', icon: 'flame' },
 		...(canEdit ? [{ id: 'documents' as NavItemId, label: 'Documents', icon: 'pdf' }] : []),
-		{ id: 'upload', label: 'Upload Files', icon: 'upload' }
+		{ id: 'upload', label: 'Upload Files', icon: 'upload' },
+		{ id: 'wiki', label: 'Wiki', icon: 'book' }
 	]);
 
 	const bottomNavItems: NavItem[] = [
@@ -88,7 +89,7 @@
 		<!-- Top nav items -->
 		<nav class="flex flex-col gap-0.5 px-[10px] py-3">
 			{#each topNavItems as item (item.id)}
-				{@const active = currentPath === item.id}
+				{@const active = currentPath === item.id || currentPath.startsWith(`${item.id}/`)}
 				<a
 					href={resolve(`/${item.id}`)}
 					aria-current={active ? 'page' : undefined}
@@ -106,7 +107,7 @@
 		<!-- Bottom nav items -->
 		<nav class="flex flex-col gap-0.5 px-[10px] py-3">
 			{#each bottomNavItems as item (item.id)}
-				{@const active = currentPath === item.id}
+				{@const active = currentPath === item.id || currentPath.startsWith(`${item.id}/`)}
 				<a
 					href={resolve(`/${item.id}`)}
 					aria-current={active ? 'page' : undefined}

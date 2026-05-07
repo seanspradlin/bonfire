@@ -50,6 +50,20 @@
       "when": 1777908811695,
       "tag": "0006_thick_wendigo",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1777948510339,
+      "tag": "0007_perfect_leader",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1777951981933,
+      "tag": "0008_swift_kulan_gath",
+      "breakpoints": true
     }
   ]
 }
