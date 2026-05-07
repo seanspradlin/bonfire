@@ -59,6 +59,25 @@ export function createMcpRouter(deps: SharedDeps) {
 
 	/** MCP Streamable HTTP endpoint — handles all MCP protocol traffic */
 	router.all("/mcp", async (c) => {
+		const req = c.req.raw;
+		const sessionId = req.headers.get("mcp-session-id");
+
+		// Route to existing session — the session ID is the auth credential for
+		// subsequent requests. Re-validating the JWT here would evict clients
+		// whenever their token expires even though their session is still active.
+		if (sessionId) {
+			const entry = sessions.get(sessionId);
+			if (!entry) {
+				return new Response(
+					JSON.stringify({ error: "Session not found or expired" }),
+					{ status: 404, headers: { "Content-Type": "application/json" } },
+				);
+			}
+			entry.lastActivityAt = Date.now();
+			return entry.transport.handleRequest(req);
+		}
+
+		// New session — require a valid JWT to establish identity
 		const authHeader = c.req.header("authorization");
 		if (!authHeader?.startsWith("Bearer ")) {
 			return c.json({ error: "Unauthorized" }, 401, {
@@ -82,28 +101,6 @@ export function createMcpRouter(deps: SharedDeps) {
 			return c.json({ error: "Unauthorized" }, 401, {
 				"WWW-Authenticate": `Bearer resource_metadata="${baseURL}/.well-known/oauth-protected-resource"`,
 			});
-		}
-
-		const req = c.req.raw;
-		const sessionId = req.headers.get("mcp-session-id");
-
-		// Route to existing session
-		if (sessionId) {
-			const entry = sessions.get(sessionId);
-			if (!entry) {
-				return new Response(
-					JSON.stringify({ error: "Session not found or expired" }),
-					{ status: 404, headers: { "Content-Type": "application/json" } },
-				);
-			}
-			if (entry.ownerId !== userId) {
-				return new Response(JSON.stringify({ error: "Forbidden" }), {
-					status: 403,
-					headers: { "Content-Type": "application/json" },
-				});
-			}
-			entry.lastActivityAt = Date.now();
-			return entry.transport.handleRequest(req);
 		}
 
 		// New session — only allow on POST (initialize requests)
