@@ -14,7 +14,6 @@ const SESSION_SWEEP_INTERVAL_MS = 60_000;
 
 interface SessionEntry {
 	transport: WebStandardStreamableHTTPServerTransport;
-	ownerId: string;
 	lastActivityAt: number;
 	createdAt: number;
 }
@@ -49,7 +48,6 @@ export function createMcpRouter(deps: SharedDeps) {
 				entry.transport.close().catch((error) => {
 					console.warn("Failed to close evicted MCP session transport", {
 						sessionId: sid,
-						ownerId: entry.ownerId,
 						error,
 					});
 				});
@@ -75,6 +73,16 @@ export function createMcpRouter(deps: SharedDeps) {
 			}
 			entry.lastActivityAt = Date.now();
 			return entry.transport.handleRequest(req);
+		}
+
+		// New session — only allow on POST (initialize requests)
+		if (req.method !== "POST") {
+			return new Response(
+				JSON.stringify({
+					error: "Send a POST initialize request to start a session",
+				}),
+				{ status: 400, headers: { "Content-Type": "application/json" } },
+			);
 		}
 
 		// New session — require a valid JWT to establish identity
@@ -103,23 +111,12 @@ export function createMcpRouter(deps: SharedDeps) {
 			});
 		}
 
-		// New session — only allow on POST (initialize requests)
-		if (req.method !== "POST") {
-			return new Response(
-				JSON.stringify({
-					error: "Send a POST initialize request to start a session",
-				}),
-				{ status: 400, headers: { "Content-Type": "application/json" } },
-			);
-		}
-
 		const transport = new WebStandardStreamableHTTPServerTransport({
 			sessionIdGenerator: () => crypto.randomUUID(),
 			onsessioninitialized: (sid) => {
 				const now = Date.now();
 				sessions.set(sid, {
 					transport,
-					ownerId: userId,
 					lastActivityAt: now,
 					createdAt: now,
 				});
