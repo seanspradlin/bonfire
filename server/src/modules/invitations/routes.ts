@@ -1,11 +1,11 @@
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { Hono } from "hono";
-import { Resend } from "resend";
 import { z } from "zod";
 import { isAdmin, requireAuth } from "@/modules/auth";
 import { auth } from "@/modules/auth/auth";
 import { db } from "@/modules/db";
 import { invitations, user } from "@/modules/db/schema";
+import { getResendClient } from "@/modules/email/resend";
 
 const createInvitationSchema = z.object({
 	email: z.string().email(),
@@ -19,18 +19,6 @@ const acceptInvitationSchema = z.object({
 
 /** 72 hours in milliseconds */
 const INVITATION_TTL_MS = 72 * 60 * 60 * 1000;
-
-/**
- * Returns a lazily-initialised Resend client, or null if RESEND_API_KEY is not
- * set. Callers must handle the null case gracefully (dev mode: skip email).
- */
-function getResendClient(): Resend | null {
-	const apiKey = process.env.RESEND_API_KEY;
-	if (!apiKey) {
-		return null;
-	}
-	return new Resend(apiKey);
-}
 
 /**
  * Generates a cryptographically-random 32-byte hex token suitable for use as

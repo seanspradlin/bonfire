@@ -14,6 +14,7 @@ import {
 	user,
 	verification,
 } from "@/modules/db/schema";
+import { getResendClient } from "@/modules/email/resend";
 
 export const baseURL = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
 
@@ -39,6 +40,26 @@ export const auth = betterAuth({
 		enabled: true,
 		autoSignIn: false,
 		minPasswordLength: 8,
+		resetPasswordTokenExpiresIn: 60 * 60 * 6,
+		sendResetPassword: async ({ user, url }) => {
+			const resend = getResendClient();
+			if (!resend) {
+				console.warn(
+					"RESEND_API_KEY not set — skipping password reset email for",
+					user.email,
+				);
+				return;
+			}
+			const { error } = await resend.emails.send({
+				from: "Bonfire <noreply@bonfire.example.com>",
+				to: user.email,
+				subject: "Reset your Bonfire password",
+				text: `You requested a password reset.\n\nReset your password here:\n${url}\n\nThis link expires in 6 hours. If you didn't request this, you can ignore this email.`,
+			});
+			if (error) {
+				console.error("Failed to send password reset email:", error);
+			}
+		},
 	},
 	plugins: [
 		username({

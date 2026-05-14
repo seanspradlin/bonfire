@@ -12,6 +12,8 @@
 	let loading = $state(false);
 	let error = $state('');
 
+	const passwordReset = $derived($page.url.searchParams.get('reset') === '1');
+
 	async function handleSubmit(e: SubmitEvent) {
 		e.preventDefault();
 		if (!email || !password) {
@@ -79,6 +81,14 @@
 			</h1>
 			<p class="mb-7 text-sm text-text-muted">Sign in to manage the knowledge base</p>
 
+			{#if passwordReset}
+				<div
+					class="mb-5 rounded-lg border border-[color-mix(in_oklch,var(--success)_35%,transparent)] bg-[color-mix(in_oklch,var(--success)_12%,transparent)] px-[14px] py-[10px] text-[13px] text-success"
+				>
+					Password updated — sign in with your new password.
+				</div>
+			{/if}
+
 			{#if error}
 				<div
 					class="mb-5 rounded-lg border border-[color-mix(in_oklch,var(--danger)_35%,transparent)] bg-[color-mix(in_oklch,var(--danger)_12%,transparent)] px-[14px] py-[10px] text-[13px] text-danger"
@@ -139,9 +149,7 @@
 			</form>
 
 			<p class="mt-5 text-center text-[13px] text-text-faint">
-				<button type="button" class="border-0 bg-transparent p-0 text-[13px] text-accent">
-					Forgot your password?
-				</button>
+				<a href={resolve('/forgot-password')} class="text-accent">Forgot your password?</a>
 			</p>
 		</div>
 
