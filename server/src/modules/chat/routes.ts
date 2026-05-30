@@ -34,7 +34,7 @@ const MAX_TOTAL_CHARS = 50_000;
 // Idle stream timeout: abort if no text delta arrives within this window.
 const STREAM_IDLE_TIMEOUT_MS = 60_000;
 
-const SYSTEM_PROMPT = `You are Bonfire, a knowledge base assistant for the team.
+const SYSTEM_PROMPT = `You are Bonfire, a knowledge base assistant for your team.
 
 **How to answer:**
 - For any substantive factual question, call \`query_knowledge_base\` FIRST before replying. Do not answer from memory for operational, procedural, or team-specific questions.

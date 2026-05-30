@@ -51,7 +51,7 @@ export const auth = betterAuth({
 				return;
 			}
 			const { error } = await resend.emails.send({
-				from: "Bonfire <noreply@bonfire.example.com>",
+				from: process.env.EMAIL_FROM ?? "Bonfire <noreply@example.com>",
 				to: user.email,
 				subject: "Reset your Bonfire password",
 				text: `You requested a password reset.\n\nReset your password here:\n${url}\n\nThis link expires in 6 hours. If you didn't request this, you can ignore this email.`,

@@ -21,7 +21,7 @@
 	};
 
 	const WELCOME_MESSAGE =
-		"Hi! I'm Bonfire, your knowledge base assistant. Ask me anything about the team's operations, training materials, or procedures.";
+		"Hi! I'm Bonfire, your knowledge base assistant. Ask me anything about your team's operations, training materials, or procedures.";
 
 	let messages = $state<Message[]>([{ id: 0, role: 'assistant', text: WELCOME_MESSAGE }]);
 

@@ -51,9 +51,7 @@
 					Bonfire
 				</span>
 			</div>
-			<p class="text-[13px] tracking-[0.05em] text-text-muted uppercase">
-				Team Knowledge Base
-			</p>
+			<p class="text-[13px] tracking-[0.05em] text-text-muted uppercase">Team Knowledge Base</p>
 		</div>
 
 		<div class="rounded-2xl border-[1.5px] border-border bg-bg-card p-9 shadow-[var(--shadow)]">
@@ -93,10 +91,7 @@
 
 				<form onsubmit={handleSubmit}>
 					<div class="mb-6">
-						<label
-							for="forgot-email"
-							class="mb-1.5 block text-[13px] font-medium text-text-muted"
-						>
+						<label for="forgot-email" class="mb-1.5 block text-[13px] font-medium text-text-muted">
 							Email address
 						</label>
 						<div class="relative">

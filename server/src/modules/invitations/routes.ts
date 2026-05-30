@@ -106,7 +106,7 @@ export function createInvitationsRouter() {
 			);
 		} else {
 			const { error: emailError } = await resend.emails.send({
-				from: "Bonfire <noreply@bonfire.example.com>",
+				from: process.env.EMAIL_FROM ?? "Bonfire <noreply@example.com>",
 				to: email,
 				subject: "You've been invited to Bonfire",
 				text: `You've been invited to join Bonfire as ${role}.\n\nAccept your invitation here:\n${inviteLink}\n\nThis link expires in 72 hours.`,

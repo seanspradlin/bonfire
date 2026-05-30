@@ -81,9 +81,7 @@
 					Bonfire
 				</span>
 			</div>
-			<p class="text-[13px] tracking-[0.05em] text-text-muted uppercase">
-				Team Knowledge Base
-			</p>
+			<p class="text-[13px] tracking-[0.05em] text-text-muted uppercase">Team Knowledge Base</p>
 		</div>
 
 		{#if !data.valid}

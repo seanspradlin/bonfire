@@ -2,9 +2,9 @@ import { eq } from "drizzle-orm";
 import { auth } from "@/modules/auth/auth";
 import { db, user } from "@/modules/db";
 
-const SEEDED_EMAIL = "admin@example.com";
-const SEEDED_NAME = "Sean Spradlin";
-const SEEDED_USERNAME = "seanspradlin";
+const SEEDED_EMAIL = process.env.SEED_ADMIN_EMAIL ?? "admin@example.com";
+const SEEDED_NAME = process.env.SEED_ADMIN_NAME ?? "Admin";
+const SEEDED_USERNAME = process.env.SEED_ADMIN_USERNAME ?? "admin";
 
 async function getSeedUserByEmail(email: string) {
 	const rows = await db

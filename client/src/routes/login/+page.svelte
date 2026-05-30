@@ -67,9 +67,7 @@
 					Bonfire
 				</span>
 			</div>
-			<p class="text-[13px] tracking-[0.05em] text-text-muted uppercase">
-				Team Knowledge Base
-			</p>
+			<p class="text-[13px] tracking-[0.05em] text-text-muted uppercase">Team Knowledge Base</p>
 		</div>
 
 		<div class="rounded-2xl border-[1.5px] border-border bg-bg-card p-9 shadow-[var(--shadow)]">
