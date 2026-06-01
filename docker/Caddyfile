@@ -1,0 +1,30 @@
+# Local Docker reverse proxy — single HTTP entry point for the stack.
+# Routes API/auth/MCP traffic to the server container and everything else to
+# the SvelteKit client container. (The production Caddyfile at the repo root
+# terminates TLS for a real domain; this one is HTTP-only for local use.)
+:80 {
+	# Strip the /api prefix before forwarding (matches the Vite dev proxy).
+	handle_path /api/* {
+		reverse_proxy server:3000
+	}
+
+	# MCP endpoint — disable buffering so streamed responses flush immediately.
+	handle /mcp {
+		reverse_proxy server:3000 {
+			flush_interval -1
+		}
+	}
+
+	handle /auth/* {
+		reverse_proxy server:3000
+	}
+
+	handle /.well-known/* {
+		reverse_proxy server:3000
+	}
+
+	# Everything else is the web UI.
+	handle {
+		reverse_proxy client:3001
+	}
+}

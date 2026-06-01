@@ -1,0 +1,30 @@
+# Dependencies (re-installed inside the image from the lockfile)
+node_modules
+**/node_modules
+
+# Build output
+server/dist
+client/build
+client/.svelte-kit
+
+# Local data + secrets
+data
+.env
+**/.env
+.env.*
+!.env.example
+
+# Version control / tooling
+.git
+.github
+.gitignore
+
+# Editor / OS cruft
+.vscode
+.idea
+**/*.log
+.DS_Store
+
+# Docs and meta not needed in the image
+README.md
+LICENSE

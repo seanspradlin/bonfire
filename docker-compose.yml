@@ -9,6 +9,96 @@ services:
       - "5432:5432"
     volumes:
       - db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bonfire -d bonfire"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # One-shot: applies Drizzle migrations, then exits. Reuses the server image.
+  migrate:
+    image: bonfire-server:local
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    command: ["bun", "dist/migrate.js"]
+    environment:
+      DATABASE_URL: postgresql://bonfire:bonfire@db:5432/bonfire
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  server:
+    image: bonfire-server:local
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://bonfire:bonfire@db:5432/bonfire
+      # Required — only this one must be supplied in your .env file.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in your .env file}
+      # Public base URL (the Caddy entry point) — drives auth issuer/CSRF.
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:8080}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-bonfire-development-secret-change-me}
+      CLIENT_URL: ${CLIENT_URL:-http://localhost:8080}
+      # Keep out of production so the initial admin seed runs.
+      NODE_ENV: ${NODE_ENV:-development}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-changeme123}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@example.com}
+      SEED_ADMIN_USERNAME: ${SEED_ADMIN_USERNAME:-admin}
+      SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:-Admin}
+      # Optional integrations — leave blank to disable.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      COHERE_API_KEY: ${COHERE_API_KEY:-}
+      AWS_BUCKET: ${AWS_BUCKET:-}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      ARTIFACT_URL_TTL_SECONDS: ${ARTIFACT_URL_TTL_SECONDS:-3600}
+    expose:
+      - "3000"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  client:
+    image: bonfire-client:local
+    build:
+      context: .
+      dockerfile: client/Dockerfile
+    environment:
+      # Public origin (Caddy) — used by adapter-node for CSRF/origin checks.
+      ORIGIN: ${CLIENT_URL:-http://localhost:8080}
+      # Tells hooks.server.ts to route SSR /api calls straight to the backend.
+      INTERNAL_API_URL: http://server:3000
+    expose:
+      - "3001"
+    depends_on:
+      - server
+    restart: unless-stopped
+
+  # Single entry point: http://localhost:8080
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - server
+      - client
+    restart: unless-stopped
 
 volumes:
   db:
+  caddy_data:
+  caddy_config:
