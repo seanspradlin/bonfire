@@ -1,7 +1,7 @@
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { Hono } from "hono";
 import { createRemoteJWKSet, jwtVerify } from "jose";
-import { baseURL } from "@/modules/auth";
+import { baseURL, internalBaseURL } from "@/modules/auth";
 import { createServer, type SharedDeps } from "@/modules/mcp/tools";
 
 // ---------------------------------------------------------------------------
@@ -28,7 +28,11 @@ interface SessionEntry {
  * sleep, network drop) would otherwise leak a transport + McpServer per try.
  */
 export function createMcpRouter(deps: SharedDeps) {
-	const jwks = createRemoteJWKSet(new URL(`${baseURL}/auth/jwks`));
+	// Fetch the server's own JWKS over its internal loopback address. The public
+	// baseURL (Caddy entry point) isn't reachable from inside the container, so
+	// the issuer/audience below stay on baseURL while only the fetch target uses
+	// internalBaseURL.
+	const jwks = createRemoteJWKSet(new URL(`${internalBaseURL}/auth/jwks`));
 
 	const router = new Hono<{
 		Variables: {

@@ -18,6 +18,13 @@ import { getResendClient } from "@/modules/email/resend";
 
 export const baseURL = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
 
+// Loopback URL the server uses to reach its OWN auth endpoints (e.g. the JWKS
+// fetch during MCP token verification). In containerized deployments the public
+// baseURL (the Caddy entry point) isn't reachable from inside the container, so
+// this must point at the server's own listen address. Falls back to baseURL for
+// single-process deployments where the public URL is locally reachable.
+export const internalBaseURL = process.env.INTERNAL_AUTH_URL ?? baseURL;
+
 export const auth = betterAuth({
 	database: drizzleAdapter(db, {
 		provider: "pg",

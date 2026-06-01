@@ -1,5 +1,9 @@
 export type { AuthSession } from "@/modules/auth/auth";
-export { baseURL, getSessionFromHeaders } from "@/modules/auth/auth";
+export {
+	baseURL,
+	getSessionFromHeaders,
+	internalBaseURL,
+} from "@/modules/auth/auth";
 export {
 	type AuthUser,
 	createAuthSessionMiddleware,

@@ -41,6 +41,9 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in your .env file}
       # Public base URL (the Caddy entry point) — drives auth issuer/CSRF.
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:8080}
+      # Loopback the server uses to fetch its OWN JWKS — the public URL above
+      # isn't reachable from inside this container, so point at its own port.
+      INTERNAL_AUTH_URL: http://localhost:3000
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-bonfire-development-secret-change-me}
       CLIENT_URL: ${CLIENT_URL:-http://localhost:8080}
       # Keep out of production so the initial admin seed runs.
