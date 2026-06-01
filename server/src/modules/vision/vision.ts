@@ -44,12 +44,25 @@ Guidelines for tags:
 Respond with only the JSON object, no other text.`;
 
 class AnthropicVisionProvider implements VisionProvider {
-	private client: Anthropic;
-	private model: string;
+	private readonly apiKey: string | undefined;
+	private readonly model: string;
+	private cachedClient: Anthropic | undefined;
 
-	constructor(apiKey: string, model = "claude-haiku-4-5-20251001") {
-		this.client = new Anthropic({ apiKey });
+	constructor(apiKey: string | undefined, model = "claude-haiku-4-5-20251001") {
+		this.apiKey = apiKey;
 		this.model = model;
+	}
+
+	// The Anthropic client is built lazily so the server can boot without
+	// ANTHROPIC_API_KEY; the error surfaces only if image analysis is used.
+	private get client(): Anthropic {
+		if (!this.apiKey) {
+			throw new Error(
+				"ANTHROPIC_API_KEY environment variable is required for image analysis.",
+			);
+		}
+		this.cachedClient ??= new Anthropic({ apiKey: this.apiKey });
+		return this.cachedClient;
 	}
 
 	async analyzeImage(
@@ -114,11 +127,7 @@ class AnthropicVisionProvider implements VisionProvider {
 }
 
 export function createVisionProvider(): VisionProvider {
-	const apiKey = process.env.ANTHROPIC_API_KEY;
-	if (!apiKey) {
-		throw new Error(
-			"ANTHROPIC_API_KEY environment variable is required for image analysis.",
-		);
-	}
-	return new AnthropicVisionProvider(apiKey);
+	// Image analysis is optional — defer the ANTHROPIC_API_KEY check to call
+	// time so the server boots with only OPENAI_API_KEY configured.
+	return new AnthropicVisionProvider(process.env.ANTHROPIC_API_KEY);
 }

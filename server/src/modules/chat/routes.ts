@@ -100,13 +100,20 @@ export function createChatRouter({
 	storage,
 }: ChatDeps) {
 	const router = new Hono();
-	const apiKey = process.env.ANTHROPIC_API_KEY;
-	if (!apiKey) {
-		throw new Error(
-			"ANTHROPIC_API_KEY environment variable is required for chat.",
-		);
-	}
-	const client = new Anthropic({ apiKey });
+
+	// Chat requires ANTHROPIC_API_KEY, but it is optional for the rest of the
+	// server — defer the check to request time so the server boots without it.
+	let cachedClient: Anthropic | undefined;
+	const getClient = (): Anthropic => {
+		const apiKey = process.env.ANTHROPIC_API_KEY;
+		if (!apiKey) {
+			throw new Error(
+				"ANTHROPIC_API_KEY environment variable is required for chat.",
+			);
+		}
+		cachedClient ??= new Anthropic({ apiKey });
+		return cachedClient;
+	};
 
 	router.post("/chat", async (c) => {
 		const authUser = requireAuth(c);
@@ -131,6 +138,16 @@ export function createChatRouter({
 
 		// Abort signal from the client (browser navigation / tab close).
 		const clientSignal = c.req.raw.signal;
+
+		let client: Anthropic;
+		try {
+			client = getClient();
+		} catch {
+			return c.json(
+				{ error: "Chat is not configured — set ANTHROPIC_API_KEY." },
+				503,
+			);
+		}
 
 		return streamSSE(c, async (stream) => {
 			const history: MessageParam[] = messages;
