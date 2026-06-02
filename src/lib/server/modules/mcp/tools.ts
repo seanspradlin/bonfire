@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { env } from '$env/dynamic/private';
+import { canEdit, canModifyResource } from '@/modules/auth/guards';
 import type { EmbeddingProvider, RerankProvider } from '@/modules/embedding';
 import { ingestDocument } from '@/modules/ingestion';
 import {
@@ -70,6 +71,21 @@ export async function resolveArtifactUrls(
 
 export interface ServerDeps extends SharedDeps {
 	userId: string;
+	/** The caller's role, resolved at session establishment. May be null. */
+	userRole: string | null;
+}
+
+/** Standard MCP error result returned when the caller lacks permission. */
+function forbiddenResult(action: string) {
+	return {
+		content: [
+			{
+				type: 'text' as const,
+				text: `Forbidden: you do not have permission to ${action}. Editors may only modify their own content; admins may modify any.`
+			}
+		],
+		isError: true
+	};
 }
 
 // ---------------------------------------------------------------------------
@@ -83,12 +99,16 @@ export function createServer({
 	reranker,
 	storage,
 	wikiRepo,
-	userId
+	userId,
+	userRole
 }: ServerDeps): McpServer {
 	const server = new McpServer({
 		name: 'bonfire',
 		version: '0.1.0'
 	});
+
+	// The caller identity used for all write/delete authorization checks.
+	const caller = { id: userId, role: userRole };
 
 	// -------------------------------------------------------------------------
 	// Tool: add_document
@@ -126,6 +146,16 @@ export function createServer({
 			}
 		},
 		async ({ title, content, tags, date, id }) => {
+			// Authorize: creating new content requires editor/admin; overwriting an
+			// existing document requires ownership (editor) or admin.
+			if (!canEdit(caller)) return forbiddenResult('add documents');
+			if (id) {
+				const existing = await repo.getById(id);
+				if (existing && !canModifyResource(caller, existing.userId)) {
+					return forbiddenResult('overwrite this document');
+				}
+			}
+
 			const doc = await ingestDocument({ id, title, content, tags, date, userId }, repo, embedder);
 
 			return {
@@ -438,6 +468,15 @@ export function createServer({
 			}
 		},
 		async ({ image_data, media_type, title, tags, id, context, date }) => {
+			// Authorize before the expensive vision call.
+			if (!canEdit(caller)) return forbiddenResult('add images');
+			if (id) {
+				const existing = await repo.getById(id);
+				if (existing && !canModifyResource(caller, existing.userId)) {
+					return forbiddenResult('overwrite this document');
+				}
+			}
+
 			const result = await vision.analyzeImage(
 				{ data: image_data, mediaType: media_type },
 				{ title, context }
@@ -494,8 +533,20 @@ export function createServer({
 			}
 		},
 		async ({ id }) => {
-			const deleted = await repo.delete(id);
+			const existing = await repo.getById(id);
+			if (!existing || existing.parentId !== null) {
+				return {
+					content: [{ type: 'text', text: `Document not found: ${id}` }],
+					isError: true
+				};
+			}
 
+			// Editors may delete only their own documents; admins may delete any.
+			if (!canModifyResource(caller, existing.userId)) {
+				return forbiddenResult('delete this document');
+			}
+
+			const deleted = await repo.delete(id);
 			if (!deleted) {
 				return {
 					content: [{ type: 'text', text: `Document not found: ${id}` }],
@@ -537,6 +588,8 @@ export function createServer({
 			}
 		},
 		async ({ slug, title, content, tags, source_document_ids }) => {
+			if (!canEdit(caller)) return forbiddenResult('create wiki pages');
+
 			const existing = await wikiRepo.getBySlug(slug);
 			if (existing) {
 				return {
@@ -622,6 +675,11 @@ export function createServer({
 				};
 			}
 
+			// Editors may update only their own wiki pages; admins may update any.
+			if (!canModifyResource(caller, existing.userId)) {
+				return forbiddenResult('update this wiki page');
+			}
+
 			const embedding = await embedder.embed(content);
 			const page = await wikiRepo.upsertBySlug({
 				slug,
@@ -669,8 +727,20 @@ export function createServer({
 			}
 		},
 		async ({ slug }) => {
-			const deleted = await wikiRepo.delete(slug);
+			const existing = await wikiRepo.getBySlug(slug);
+			if (!existing) {
+				return {
+					content: [{ type: 'text', text: `No wiki page found for slug "${slug}".` }],
+					isError: true
+				};
+			}
 
+			// Editors may delete only their own wiki pages; admins may delete any.
+			if (!canModifyResource(caller, existing.userId)) {
+				return forbiddenResult('delete this wiki page');
+			}
+
+			const deleted = await wikiRepo.delete(slug);
 			if (!deleted) {
 				return {
 					content: [{ type: 'text', text: `No wiki page found for slug "${slug}".` }],

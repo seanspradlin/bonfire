@@ -1,6 +1,9 @@
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
+import { eq } from 'drizzle-orm';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { baseURL } from '@/auth';
+import { db } from '@/db';
+import { user } from '@/db/schema';
 import { createServer, type SharedDeps } from '@/modules/mcp/tools';
 
 // ---------------------------------------------------------------------------
@@ -119,6 +122,25 @@ export async function handleMcpRequest(request: Request, deps: SharedDeps): Prom
 		});
 	}
 
+	// Resolve the caller's role so the tool layer can authorize writes/deletes.
+	// Looked up once at session establishment — the session-id is the credential
+	// for subsequent requests, so authorization is pinned to session start
+	// (consistent with the JWT not being re-verified per request above).
+	const [account] = await db
+		.select({ role: user.role })
+		.from(user)
+		.where(eq(user.id, userId))
+		.limit(1);
+
+	if (!account) {
+		return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+			status: 401,
+			headers: { 'Content-Type': 'application/json' }
+		});
+	}
+
+	const userRole = account.role ?? null;
+
 	const transport = new WebStandardStreamableHTTPServerTransport({
 		sessionIdGenerator: () => crypto.randomUUID(),
 		onsessioninitialized: (sid) => {
@@ -144,7 +166,7 @@ export async function handleMcpRequest(request: Request, deps: SharedDeps): Prom
 		}
 	});
 
-	const server = createServer({ ...deps, userId });
+	const server = createServer({ ...deps, userId, userRole });
 	await server.connect(transport);
 
 	return transport.handleRequest(request);
