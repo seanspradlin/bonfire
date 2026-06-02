@@ -59,15 +59,29 @@ export const auth = betterAuth({
 				throw new APIError('BAD_REQUEST', { message: 'Email is required' });
 			}
 
+			// Allow the dev seed admin to bootstrap. This mirrors the exact guards
+			// in seedInitialAdminUser (non-production + SEED_ADMIN_PASSWORD set), so
+			// the exemption only exists for the one operator-configured email in the
+			// one environment where seeding actually runs. No exemption in production.
+			const seedActive = env.NODE_ENV !== 'production' && Boolean(env.SEED_ADMIN_PASSWORD);
+			const seedEmail = (env.SEED_ADMIN_EMAIL ?? 'admin@example.com').toLowerCase();
+			if (seedActive && email.toLowerCase() === seedEmail) return;
+
+			// Require a still-valid invitation: matching email, not yet accepted, and
+			// not expired. The accept-invite flow marks acceptedAt inside an uncommitted
+			// transaction on a separate connection, so this read still sees the
+			// invitation as valid while signUpEmail runs.
 			const [invite] = await db
 				.select({ id: invitations.id })
 				.from(invitations)
-				.where(sql`lower(${invitations.email}) = lower(${email})`)
+				.where(
+					sql`lower(${invitations.email}) = lower(${email}) and ${invitations.acceptedAt} is null and ${invitations.expiresAt} > now()`
+				)
 				.limit(1);
 
 			if (!invite) {
 				throw new APIError('FORBIDDEN', {
-					message: 'Sign-up is by invitation only. Ask an administrator for an invite.',
+					message: 'Sign-up is by invitation only with a valid invitation.',
 					code: 'SIGN_UP_BY_INVITATION_ONLY'
 				});
 			}
