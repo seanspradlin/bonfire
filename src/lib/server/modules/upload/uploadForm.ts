@@ -7,8 +7,16 @@
  */
 
 import { z } from 'zod';
+import { createRateLimiter } from '@/modules/shared/rateLimit';
 
 const isoDatetime = z.string().datetime();
+
+/**
+ * Per-user rate limiter shared across all upload endpoints (image/pdf/text):
+ * 20 uploads per minute. Each upload triggers AI analysis and embedding calls,
+ * so this caps runaway third-party cost from a single account.
+ */
+export const uploadRateLimiter = createRateLimiter(20, 60_000);
 
 // ---------------------------------------------------------------------------
 // Allowed image types

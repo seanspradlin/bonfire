@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
 import { json } from '@sveltejs/kit';
-import { requireAuth } from '$lib/server/modules/auth/guards';
+import { canEdit, canModifyResource, requireAuth } from '$lib/server/modules/auth/guards';
 import { repo, embedder, storage } from '$lib/server/deps';
 import { ingestDocument } from '$lib/server/modules/ingestion';
 import {
@@ -10,7 +10,8 @@ import {
 	parseOptionalDate,
 	parseOptionalId,
 	parseOptionalString,
-	parseOptionalTags
+	parseOptionalTags,
+	uploadRateLimiter
 } from '$lib/server/modules/upload/uploadForm';
 import type { RequestHandler } from './$types';
 
@@ -23,6 +24,15 @@ const MAX_TEXT_BYTES = 10 * 1024 * 1024; // 10 MB
  */
 export const POST: RequestHandler = async ({ request, locals }) => {
 	const authUser = requireAuth(locals);
+
+	// Only editors and admins may write to the knowledge base.
+	if (!canEdit(authUser)) {
+		return json({ error: 'Forbidden' }, { status: 403 });
+	}
+
+	if (uploadRateLimiter.isLimited(authUser.id)) {
+		return json({ error: 'Too many uploads — try again in a minute' }, { status: 429 });
+	}
 
 	let formData: FormData;
 	try {
@@ -72,6 +82,15 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const date = parseOptionalDate(formData);
 	if (date === null) {
 		return json({ error: 'Invalid date: must be a valid ISO 8601 timestamp' }, { status: 400 });
+	}
+
+	// If targeting an existing document by id, enforce ownership before writing
+	// (editors may only overwrite their own docs; admins any).
+	if (id) {
+		const existing = await repo.getById(id);
+		if (existing && !canModifyResource(authUser, existing.userId)) {
+			return json({ error: 'Forbidden' }, { status: 403 });
+		}
 	}
 
 	const docId = id ?? randomUUID();
