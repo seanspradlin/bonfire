@@ -1,13 +1,16 @@
 import { oauthProvider } from '@better-auth/oauth-provider';
 import { betterAuth } from 'better-auth';
+import { APIError, createAuthMiddleware } from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { sveltekitCookies } from 'better-auth/svelte-kit';
 import { admin, jwt, username } from 'better-auth/plugins';
+import { sql } from 'drizzle-orm';
 import { getRequestEvent } from '$app/server';
 import { env } from '$env/dynamic/private';
 import { db } from '$lib/server/db';
 import {
 	account,
+	invitations,
 	jwks,
 	oauthAccessToken,
 	oauthClient,
@@ -42,6 +45,34 @@ export const auth = betterAuth({
 	basePath: '/api/auth',
 	trustedOrigins: [baseURL, env.CLIENT_URL ?? 'http://localhost:5173'].filter(Boolean),
 	secret: env.BETTER_AUTH_SECRET,
+	hooks: {
+		// Sign-up is invitation-only. Email/password sign-up must stay enabled so
+		// the invitation-accept flow (auth.api.signUpEmail) works, but we reject
+		// any sign-up whose email has no matching invitation row. Admins create
+		// invitations via POST /api/invitations, so this restricts account
+		// creation to people an admin has explicitly invited.
+		before: createAuthMiddleware(async (ctx) => {
+			if (ctx.path !== '/sign-up/email') return;
+
+			const email = typeof ctx.body?.email === 'string' ? ctx.body.email.trim() : '';
+			if (!email) {
+				throw new APIError('BAD_REQUEST', { message: 'Email is required' });
+			}
+
+			const [invite] = await db
+				.select({ id: invitations.id })
+				.from(invitations)
+				.where(sql`lower(${invitations.email}) = lower(${email})`)
+				.limit(1);
+
+			if (!invite) {
+				throw new APIError('FORBIDDEN', {
+					message: 'Sign-up is by invitation only. Ask an administrator for an invite.',
+					code: 'SIGN_UP_BY_INVITATION_ONLY'
+				});
+			}
+		})
+	},
 	emailAndPassword: {
 		enabled: true,
 		autoSignIn: false,
