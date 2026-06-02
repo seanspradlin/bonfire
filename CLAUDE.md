@@ -4,159 +4,125 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Bonfire is an MCP (Model Context Protocol) server that provides a team knowledge base with semantic search. It exposes five MCP tools (`add_document`, `search_documents`, `get_document`, `list_documents`, `delete_document`) over a Streamable HTTP transport. The HTTP layer is a Hono server. A SvelteKit frontend provides a web UI for managing documents, users, and settings.
+Bonfire is a team knowledge base with semantic search, delivered as a single [SvelteKit](https://svelte.dev/docs/kit) app (Node adapter) that serves both the web UI and the backend from one origin. It exposes MCP (Model Context Protocol) tools over a Streamable HTTP transport at `/mcp`, a REST API under `/api/*`, and a Svelte web UI for managing documents, users, wiki pages, and settings.
 
-## Monorepo Structure
+There is no separate backend service — all server logic runs inside SvelteKit `+server.ts` route handlers and `hooks.server.ts`, with shared modules under `src/lib/server/`.
 
-This is a Bun workspaces monorepo with two packages.
+## Structure
 
 ```
-bonfire/
-  package.json          # workspace coordinator (workspaces: ["client", "server"])
-  docker-compose.yml    # local Postgres + pgvector container
-  Caddyfile             # reverse proxy config for production
-  server/               # @bonfire/server — Hono/MCP backend
-    src/
-      index.ts          # Hono app bootstrap
-      modules/          # feature modules (see Architecture below)
-    drizzle/            # generated migration files
-    drizzle.config.ts
-    package.json
-    tsconfig.json
-    biome.json
-  client/               # SvelteKit frontend
-    src/
-      routes/
-      lib/
-    package.json
-    svelte.config.js    # adapter-node
-    vite.config.ts      # API proxy → :3000
-    biome.json
+bonfire/                  (repo root)
+  compose.yaml            # local Postgres + pgvector container
+  drizzle/                # generated migration files
+  drizzle.config.ts
+  svelte.config.js        # adapter-node; alias "@" → ./src/lib/server
+  vite.config.ts          # Vitest projects (client + server)
+  eslint.config.js / .prettierrc
+  src/
+    app.d.ts              # App.Locals.user / .session types
+    hooks.server.ts       # session→locals, svelteKitHandler, .well-known OAuth metadata, admin seed
+    lib/
+      auth-client.ts      # better-auth Svelte client (basePath /api/auth)
+      <components>.svelte  stores.ts  theme.ts  types/  utils/
+      server/
+        auth.ts           # better-auth config (username, admin, jwt, oauthProvider); exports baseURL
+        deps.ts           # constructs shared singletons (repo, embedder, vision, reranker, storage, wikiRepo)
+        db/               # db.ts (node-postgres Pool), schema.ts (all tables), index.ts
+        modules/          # ported feature modules (see Architecture)
+    routes/
+      (app)/              # auth-guarded UI: chat, documents, upload, wiki, dashboard, settings, account
+      login/ consent/ accept-invite/ forgot-password/ reset-password/
+      api/                # REST + auth endpoints (see Endpoints)
+      mcp/+server.ts      # MCP Streamable HTTP (GET/POST/DELETE → handleMcpRequest)
+      health/+server.ts
 ```
-
-Tooling (Biome, TypeScript) is **per-package only** — there is no root-level `biome.json` or `tsconfig.json`.
 
 ## Commands
 
-All commands run from the repo root and proxy to the appropriate workspace.
+All commands run from the repo root with **Yarn** (Classic).
 
 ```bash
-bun run dev          # hot-reload dev server (both server + client)
-bun run build        # production build
-bun run start        # production server
-bun run check        # lint + format check via Biome
-bun run check:fix    # auto-fix lint/format issues
-bun run typecheck    # tsc --noEmit
+yarn dev          # hot-reload dev server (http://localhost:5173)
+yarn build        # production build (adapter-node → ./build)
+node build        # run production server
+yarn run check    # svelte-kit sync + svelte-check  (note: `yarn check` is Yarn's own command — use `yarn run check`)
+yarn lint         # ESLint + Prettier check
+yarn format       # Prettier write
+yarn test:unit    # Vitest
 
-bun run db:generate  # generate Drizzle migration files
-bun run db:migrate   # apply migrations
-bun run db:push      # push schema directly (dev shortcut)
-bun run db:studio    # open Drizzle Studio
-```
-
-To run a command directly within a workspace: `bun run --cwd server <script>`
-
-No test suite is configured yet.
-
-## Local Dev Setup
-
-```bash
-docker-compose up -d      # start Postgres+pgvector at localhost:5432
-cp server/.env.example server/.env  # fill in OPENAI_API_KEY
-bun run db:push           # apply schema
-bun run dev               # server :3000, client :5173
+yarn db:push      # push schema directly (dev shortcut)
+yarn db:generate  # generate Drizzle migration files
+yarn db:migrate   # apply migrations
+yarn db:studio    # open Drizzle Studio
+yarn db:start     # docker compose up (Postgres + pgvector)
 ```
 
 ## Architecture
 
-### Server modules (`server/src/modules/`)
+### Server modules (`src/lib/server/modules/`)
+
+Feature modules ported from the former Hono backend. Route handlers in `src/routes/api/**` and `src/routes/mcp` are thin adapters that pull singletons from `src/lib/server/deps.ts` and call into these:
 
 ```
-auth/
-  auth.ts          # better-auth config (email/password, username plugin, admin plugin)
-  routes.ts        # /auth/* endpoints
-  apiKeys.ts       # API key CRUD (SHA-256 hashed, bf_ prefix)
-  middleware.ts    # session middleware
-  seed.ts          # initial admin seed
-
-db/
-  db.ts            # Drizzle + node-postgres pool (20 max conns, 30s idle timeout)
-  schema.ts        # all Drizzle table definitions
-  index.ts
-
-embedding/
-  embeddings.ts    # EmbeddingProvider interface + OpenAIEmbeddingProvider
-  chunker.ts       # markdown chunking (heading context + token overlap)
-  index.ts
-
-repository/
-  repository.ts    # DocumentRepository interface + PgDocumentRepository
-
-ingestion/
-  ingestion.ts     # orchestrates chunking → batch embed → atomicIngest()
-
-mcp/
-  tools.ts         # MCP tool registrations
-  routes.ts        # /mcp endpoint + per-session transport management
-  searchResults.ts # result formatting
-
-chat/             # chat endpoints (uses knowledge search as tool)
-vision/           # vision AI provider
-upload/           # file upload handlers
-invitations/      # team invite flow
-users/            # user management
-health/           # /health endpoint
-shared/
-  parseAiJsonResponse.ts
+auth/      guards.ts (requireAuth/isAdmin/canEdit on event.locals), seed.ts
+embedding/ embeddings.ts (OpenAIEmbeddingProvider), chunker.ts, reranker.ts
+repository/ PgDocumentRepository
+ingestion/ chunking → batch embed → atomicIngest()
+wiki/      PgWikiPageRepository
+mcp/       tools.ts (MCP tool registrations), server.ts (session manager + JWT verify + handleMcpRequest), searchResults.ts
+chat/      chat tool definitions + execution
+vision/    Anthropic vision provider
+upload/    uploadForm.ts, pdf.ts
+storage/   S3 storage provider
+email/     Resend client
+shared/    parseAiJsonResponse.ts
 ```
+
+### Endpoints
+
+- **Auth** (`src/routes/api/auth/[...all]/+server.ts`): GET/POST delegate to `auth.handler(request)`. Better Auth `basePath` is `/api/auth`. Custom: `api/auth/password`, `api/oauth/clients/[clientId]`.
+- **REST** under `/api/*`: `documents` (+ `[id]`, `titles`), `users` (+ `me`, `[id]`, `[id]/role`), `wiki-pages` (+ `[slug]`), `invitations` (+ `[token]`, `[token]/accept`), `upload/{image,pdf,text}`, `chat` (SSE stream).
+- **MCP** at `/mcp`: GET/POST/DELETE → `handleMcpRequest(request)`.
+- **OAuth discovery**: `/.well-known/{oauth-authorization-server,oauth-protected-resource,openid-configuration}` are served from `hooks.server.ts` (SvelteKit ignores dot-prefixed route dirs).
 
 ### Data flow
 
-MCP tool call → `mcp/tools.ts` → `repository.ts` (storage) + `embeddings.ts` (vectors) → PostgreSQL via Drizzle ORM.
+MCP tool call → `mcp/tools.ts` → `repository.ts` (storage) + `embeddings.ts` (vectors) → PostgreSQL via Drizzle ORM. Ingestion: markdown → `chunker.ts` (split on headers, ~512-token chunks, ~128-token overlap) → batch embed via OpenAI → `atomicIngest()` transaction (delete stale chunks, upsert parent, insert chunks with `parentId` FK).
 
-Document ingestion pipeline: markdown input → `chunker.ts` (split on headers, ~512 token chunks with ~128 token overlap) → batch embed via OpenAI → `atomicIngest()` transaction (delete stale chunks, upsert parent, insert chunks with `parentId` foreign key).
+### Auth & sessions
 
-### Session management
+Better Auth is wired the official SvelteKit way: `hooks.server.ts` calls `auth.api.getSession()` and populates `event.locals.user` / `event.locals.session`, then runs `svelteKitHandler({ event, resolve, auth, building })`. The `sveltekitCookies` plugin is last in the plugin array. Route guards (`requireAuth`/`isAdmin`) read `event.locals` and throw `error(401/403)`.
 
-Each MCP client gets its own `WebStandardStreamableHTTPServerTransport` instance keyed by `mcp-session-id` header. Sessions share the same repo and embedder singletons. Auth is via Better Auth session cookie **or** API key (`Authorization: Bearer bf_...`).
+MCP clients authenticate via OAuth/JWT (Bearer). `baseURL` (exported from `auth.ts`, derived from `ORIGIN`) drives the JWT issuer (`${baseURL}/api/auth`), JWKS (`${baseURL}/api/auth/jwks`), and audience (`${baseURL}/mcp`). Each client gets its own `WebStandardStreamableHTTPServerTransport` keyed by `mcp-session-id`; idle sessions are reaped by a sweeper. CSRF relies on SvelteKit's built-in `csrf.checkOrigin` (JSON/Bearer MCP traffic is exempt; same-origin form/multipart passes).
 
 ### Semantic search
 
-Embeddings are stored in a pgvector `vector(1536)` column. Similarity is computed in Postgres via the `<=>` cosine operator, with an HNSW index for scale.
+Embeddings live in a pgvector `vector(1536)` column. Similarity is computed in Postgres via the `<=>` cosine operator with an HNSW index. The query vector is bound as a parameter cast `::vector` (driver-agnostic; works under node-postgres).
 
-### Schema highlights
+### Schema highlights (`src/lib/server/db/schema.ts`)
 
-- **documents**: `id` (UUID or `parentId:chunk:NNNN`), `title`, `content`, `tags` (JSONB), `embedding` (vector 1536), `parentId`, `date`, `userId`, `artifactKey` (nullable S3 key for original uploaded file)
+- **documents**: `id` (UUID or `parentId:chunk:NNNN`), `title`, `content`, `tags` (JSONB), `embedding` (vector 1536), `parentId`, `date`, `userId`, `artifactKey` (nullable S3 key)
+- **wikiPages**: generated wiki content
 - **auth tables**: `user`, `session`, `account`, `verification`
-- **apiKey**: MCP client tokens (hashed, last-used tracking)
+- **oauth tables**: `jwks`, `oauthClient`, `oauthAccessToken`, `oauthRefreshToken`, `oauthConsent`
 - **invitations**: team member invite flow
 
-### Client (`client/src/`)
+### Client (`src/lib/`, `src/routes/`)
 
-- `routes/(app)/+layout.svelte` — auth-guarded shell with sidebar; redirects to `/login` if not logged in
-- `lib/auth-client.ts` — better-auth client pointed at `/api/auth`
-- `lib/stores.ts` — persisted localStorage stores (`loggedIn`, `tweaks`)
-- `lib/theme.ts` — theme color constants; Tailwind v4 CSS-based config (`@theme` block, no `tailwind.config.js`)
+- `routes/(app)/+layout.svelte` + `+layout.server.ts` — auth-guarded shell; the load function reads `event.locals.user` and redirects to `/login` if absent.
+- `lib/auth-client.ts` — better-auth Svelte client (`basePath: '/api/auth'`, admin + oauthProvider client plugins).
+- `lib/stores.ts` — persisted localStorage stores. `lib/theme.ts` — theme constants; Tailwind v4 CSS config (`@theme`, no `tailwind.config.js`).
 
 ## Environment Variables
 
-| Variable | Required | Purpose |
-|---|---|---|
-| `OPENAI_API_KEY` | Yes | Embeddings via `text-embedding-3-small` (1536 dims) |
-| `DATABASE_URL` | Yes | Postgres connection string (see `server/.env.example`) |
-| `AWS_BUCKET` | No | S3/Lightsail bucket name — enables artifact storage when set |
-| `AWS_REGION` | No | AWS region for the bucket (default: `us-east-1`) |
-| `AWS_ACCESS_KEY_ID` | No | AWS credentials for artifact storage |
-| `AWS_SECRET_ACCESS_KEY` | No | AWS credentials for artifact storage |
-| `ARTIFACT_URL_TTL_SECONDS` | No | Pre-signed URL TTL in seconds (default: `3600`) |
-
-Local dev default: `postgresql://bonfire:bonfire@localhost:5432/bonfire` (matches `docker-compose.yml`).
+See `.env.example` for the full annotated list. Required: `DATABASE_URL`, `ORIGIN`, `BETTER_AUTH_SECRET`, `OPENAI_API_KEY`. Optional: `ANTHROPIC_API_KEY` (PDF/image), `COHERE_API_KEY` (reranking), `RESEND_API_KEY`/`EMAIL_FROM` (email), `CLIENT_URL`, `AWS_*` + `ARTIFACT_URL_TTL_SECONDS` (S3 artifacts), `SEED_ADMIN_*` (initial admin). Server code reads env via `$env/dynamic/private`; AWS credentials use the default AWS SDK chain.
 
 ## Tooling
 
-- **Runtime:** Bun
-- **Linter/Formatter:** Biome — tabs, double quotes for JS (no ESLint/Prettier on server; client uses Biome + Prettier)
-- **ORM:** Drizzle Kit + Drizzle ORM
+- **Runtime:** Node (adapter-node); **package manager:** Yarn Classic
+- **Linter/Formatter:** ESLint + Prettier (tabs; run `yarn format`)
+- **ORM:** Drizzle Kit + Drizzle ORM over node-postgres (`pg` Pool, 20 max conns, 30s idle, graceful drain)
 - **Validation:** Zod (MCP tool schemas)
-- **Auth:** better-auth with Drizzle adapter
-- **Path alias:** `@/*` → `src/*` in server TypeScript
+- **Auth:** better-auth (Drizzle adapter) + `@better-auth/oauth-provider`
+- **Tests:** Vitest (`vite.config.ts` defines `client` browser + `server` node projects)
+- **Path alias:** `@` → `./src/lib/server`; `$lib` → `./src/lib`

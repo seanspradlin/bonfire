@@ -48,7 +48,7 @@ tooling.
 
 ## Sounds good, what does it need to get running?
 
-A lot. I'm working on getting this consolidated, but the gist is:
+A few services. The gist is:
 
 1. OpenAI API Key - Used for generating embeddings
 2. Anthropic API Key (Optional) - Used for PDF/image upload parsing
@@ -59,14 +59,17 @@ A lot. I'm working on getting this consolidated, but the gist is:
 
 ## Setup and running
 
-Bonfire is a [Bun](https://bun.sh) workspaces monorepo with two packages: `server` (the Hono/MCP backend)
-and `client` (the SvelteKit frontend). You'll need [Bun](https://bun.sh) and [Docker](https://www.docker.com)
-(for Postgres + pgvector) installed.
+Bonfire is a single [SvelteKit](https://svelte.dev/docs/kit) application (Node adapter) that serves
+both the web UI and the API/MCP endpoints from one origin. You'll need [Node.js](https://nodejs.org) 20+,
+[Yarn](https://classic.yarnpkg.com) (Classic), and [Docker](https://www.docker.com) (for Postgres + pgvector).
 
 1. **Install dependencies**
 
    ```bash
-   bun install
+   yarn
+   # or npm install
+   # or bun
+   # or whatever else comes out next week
    ```
 
 2. **Start Postgres + pgvector**
@@ -78,46 +81,48 @@ and `client` (the SvelteKit frontend). You'll need [Bun](https://bun.sh) and [Do
    This brings up a `pgvector` container listening on `localhost:5432` with the default
    `bonfire`/`bonfire` credentials used below.
 
+   You can skip this step if you are running a pgvector-enabled database elsewhere.
+
 3. **Configure environment**
 
    ```bash
-   cp server/.env.example server/.env
+   cp .env.example .env
    ```
 
-   At minimum set `OPENAI_API_KEY`. The defaults in `.env.example` already point `DATABASE_URL`
-   at the Docker container. See the file for the optional Anthropic, Cohere, Resend, and S3 keys,
-   and set `SEED_ADMIN_PASSWORD` if you want an initial admin user seeded on first run.
+   At minimum set `OPENAI_API_KEY`, `BETTER_AUTH_SECRET`, and `ORIGIN`. The defaults already point
+   `DATABASE_URL` at the Docker container. See the file for the optional Anthropic, Cohere, Resend,
+   and S3 keys, and set `SEED_ADMIN_PASSWORD` if you want an initial admin user seeded on first run.
 
 4. **Apply the database schema**
 
    ```bash
-   bun run --cwd server db:push
+   yarn db:migrate
    ```
 
 5. **Run in development**
 
    ```bash
-   bun run dev
+   yarn dev
    ```
 
-   This starts the server on [http://localhost:3000](http://localhost:3000) and the client on
-   [http://localhost:5173](http://localhost:5173) with hot reload.
+   This starts the app on [http://localhost:5173](http://localhost:5173) with hot reload. The REST API
+   is served under `/api`, and the MCP Streamable HTTP endpoint at `/mcp`.
 
 ### Production build
 
 ```bash
-bun run build   # build both packages
-bun run start   # run the built server + client
+yarn build      # build with adapter-node → ./build
+node build      # run the production server
 ```
 
 ### Useful commands
 
-The lint, typecheck, and database scripts live in the `server` workspace, so run them with `--cwd server`:
-
 ```bash
-bun run --cwd server check      # Biome lint + format check
-bun run --cwd server typecheck  # tsc --noEmit
-bun run --cwd server db:generate # generate Drizzle migrations
-bun run --cwd server db:migrate  # apply migrations
-bun run --cwd server db:studio   # open Drizzle Studio
+yarn run check    # svelte-check (type checking)
+yarn lint         # ESLint + Prettier check
+yarn format       # Prettier write
+yarn test:unit    # Vitest unit tests
+yarn db:generate  # generate Drizzle migrations
+yarn db:migrate   # apply migrations
+yarn db:studio    # open Drizzle Studio
 ```
