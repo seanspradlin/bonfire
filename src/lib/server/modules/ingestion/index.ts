@@ -1,0 +1,1 @@
+export { ingestDocument } from './ingestion';

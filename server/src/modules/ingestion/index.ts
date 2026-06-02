@@ -1,1 +1,0 @@
-export { ingestDocument } from "./ingestion";

@@ -1,1 +1,0 @@
-export { createDocumentsRouter } from "./routes";

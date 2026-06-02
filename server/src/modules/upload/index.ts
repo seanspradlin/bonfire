@@ -1,1 +1,0 @@
-export { createUploadRouter } from "./routes";
