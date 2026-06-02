@@ -40,3 +40,23 @@ export function canEdit(user: { role?: string | string[] | null }): boolean {
 			: [];
 	return roles.some((r) => r === 'admin' || r === 'editor');
 }
+
+/**
+ * Whether a user may modify (update or delete) a resource owned by `ownerId`.
+ *
+ * Authorization model:
+ *   - Admins may modify any resource.
+ *   - Editors may modify only resources they own.
+ *   - Everyone else (viewers / default `user` role) may not modify anything.
+ *
+ * A null `ownerId` (legacy/ownerless resource) is treated as not-owned, so only
+ * admins may modify it.
+ */
+export function canModifyResource(
+	user: { id: string; role?: string | string[] | null },
+	ownerId: string | null
+): boolean {
+	if (isAdmin(user)) return true;
+	if (!canEdit(user)) return false;
+	return ownerId !== null && ownerId === user.id;
+}
