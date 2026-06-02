@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
-import { canEdit, isAdmin, requireAuth } from '$lib/server/modules/auth/guards';
+import { canEdit, canModifyResource, isAdmin, requireAuth } from '$lib/server/modules/auth/guards';
 import { repo, embedder } from '$lib/server/deps';
 import { ingestDocument } from '$lib/server/modules/ingestion';
 import type { RequestHandler } from './$types';
@@ -43,11 +43,8 @@ export const PUT: RequestHandler = async ({ params, request, locals }) => {
 		return json({ error: 'Not found' }, { status: 404 });
 	}
 
-	if (!isAdmin(authUser) && existing.userId !== authUser.id) {
-		return json({ error: 'Forbidden' }, { status: 403 });
-	}
-
-	if (!canEdit(authUser)) {
+	// Editors may update only their own documents; admins may update any.
+	if (!canModifyResource(authUser, existing.userId)) {
 		return json({ error: 'Forbidden' }, { status: 403 });
 	}
 
@@ -95,11 +92,8 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 		return json({ error: 'Not found' }, { status: 404 });
 	}
 
-	if (!isAdmin(authUser) && existing.userId !== authUser.id) {
-		return json({ error: 'Forbidden' }, { status: 403 });
-	}
-
-	if (!canEdit(authUser)) {
+	// Editors may delete only their own documents; admins may delete any.
+	if (!canModifyResource(authUser, existing.userId)) {
 		return json({ error: 'Forbidden' }, { status: 403 });
 	}
 
