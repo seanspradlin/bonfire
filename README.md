@@ -66,7 +66,10 @@ both the web UI and the API/MCP endpoints from one origin. You'll need [Node.js]
 1. **Install dependencies**
 
    ```bash
-   yarn install
+   yarn
+   # or npm install
+   # or bun
+   # or whatever else comes out next week
    ```
 
 2. **Start Postgres + pgvector**
@@ -77,6 +80,8 @@ both the web UI and the API/MCP endpoints from one origin. You'll need [Node.js]
 
    This brings up a `pgvector` container listening on `localhost:5432` with the default
    `bonfire`/`bonfire` credentials used below.
+
+   You can skip this step if you are running a pgvector-enabled database elsewhere.
 
 3. **Configure environment**
 
@@ -91,7 +96,7 @@ both the web UI and the API/MCP endpoints from one origin. You'll need [Node.js]
 4. **Apply the database schema**
 
    ```bash
-   yarn db:push
+   yarn db:migrate
    ```
 
 5. **Run in development**
