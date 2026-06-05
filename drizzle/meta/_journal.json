@@ -8,6 +8,13 @@
       "when": 1780406549975,
       "tag": "0000_purple_nocturne",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1780685118473,
+      "tag": "0001_wise_mastermind",
+      "breakpoints": true
     }
   ]
 }
