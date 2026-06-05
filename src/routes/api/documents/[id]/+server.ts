@@ -5,6 +5,16 @@ import { repo, embedder } from '$lib/server/deps';
 import { ingestDocument } from '$lib/server/modules/ingestion';
 import type { RequestHandler } from './$types';
 
+const repoRefSchema = z.object({
+	url: z.string().trim().min(1),
+	paths: z
+		.array(z.string())
+		.transform((arr) => arr.map((p) => p.trim()).filter(Boolean))
+		.optional(),
+	ref: z.string().trim().optional(),
+	note: z.string().trim().optional()
+});
+
 const updateSchema = z.object({
 	title: z.string().optional(),
 	content: z.string().optional(),
@@ -12,6 +22,7 @@ const updateSchema = z.object({
 		.array(z.string())
 		.transform((arr) => arr.map((t) => t.trim()).filter(Boolean))
 		.optional(),
+	repos: z.array(repoRefSchema).optional(),
 	date: z.string().optional()
 });
 
@@ -73,6 +84,7 @@ export const PUT: RequestHandler = async ({ params, request, locals }) => {
 			title,
 			content,
 			tags: body.tags ?? existing.tags,
+			repos: body.repos ?? existing.repos,
 			date: body.date ?? existing.date ?? undefined,
 			userId: existing.userId ?? undefined
 		},

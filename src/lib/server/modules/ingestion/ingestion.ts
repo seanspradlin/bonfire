@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { EmbeddingProvider } from '@/modules/embedding';
 import { applyChunkOverlap, CHUNK_OVERLAP_TOKENS, chunkMarkdown } from '@/modules/embedding';
-import type { Document, DocumentRepository } from '@/modules/repository';
+import type { Document, DocumentRepository, RepoRef } from '@/modules/repository';
 
 /**
  * Upsert a document with automatic chunking. Documents exceeding
@@ -22,6 +22,7 @@ export async function ingestDocument(
 		title: string;
 		content: string;
 		tags?: string[];
+		repos?: RepoRef[];
 		date?: string;
 		userId?: string;
 		/** S3/Lightsail storage key for the original uploaded file, if any. */
@@ -69,6 +70,7 @@ export async function ingestDocument(
 			title: `${params.title} [${i + 1}/${cleanContents.length}]`,
 			content,
 			tags: params.tags,
+			repos: params.repos,
 			date: params.date,
 			parentId,
 			embedding: embeddings[i],

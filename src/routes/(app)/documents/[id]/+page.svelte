@@ -6,7 +6,7 @@
 	import Icon from '$lib/Icon.svelte';
 	import IconBtn from '$lib/IconBtn.svelte';
 	import Markdown from '$lib/Markdown.svelte';
-	import type { Document } from '$lib/types/document';
+	import type { Document, RepoRef } from '$lib/types/document';
 	import { formatRelativeTime } from '$lib/utils/dateFormat';
 
 	interface Props {
@@ -18,6 +18,15 @@
 
 	let isEditModalOpen = $state(false);
 	let isDeleteConfirmOpen = $state(false);
+
+	/**
+	 * Resolve a repo reference to a browsable URL. Full URLs are used as-is;
+	 * `owner/repo` shorthand is expanded to a GitHub URL for convenience.
+	 */
+	function repoHref(url: string): string {
+		if (/^https?:\/\//i.test(url)) return url;
+		return `https://github.com/${url}`;
+	}
 
 	function formatDate(iso: string) {
 		return new Date(iso).toLocaleDateString('en-US', {
@@ -40,6 +49,7 @@
 		title: string;
 		content: string;
 		tags: string[];
+		repos: RepoRef[];
 		date: string;
 	}) {
 		const res = await fetch(`/api/documents/${doc.id}`, {
@@ -49,6 +59,7 @@
 				title: updates.title,
 				content: updates.content,
 				tags: updates.tags,
+				repos: updates.repos,
 				...(updates.date ? { date: updates.date } : {})
 			})
 		});
@@ -104,6 +115,45 @@
 				>
 					{tag}
 				</span>
+			{/each}
+		</div>
+	{/if}
+
+	{#if doc.repos?.length > 0}
+		<div class="mb-6 flex flex-col gap-2">
+			<span class="text-[12px] font-semibold tracking-wide text-text-muted uppercase">
+				Repositories
+			</span>
+			{#each doc.repos as repo (repo.url)}
+				<div class="rounded-lg border border-border bg-bg-card px-3 py-2 text-[13px]">
+					<!-- eslint-disable svelte/no-navigation-without-resolve -->
+					<a
+						href={repoHref(repo.url)}
+						target="_blank"
+						rel="noreferrer noopener"
+						class="font-medium text-accent no-underline hover:underline"
+					>
+						{repo.url}
+					</a>
+					<!-- eslint-enable svelte/no-navigation-without-resolve -->
+					{#if repo.ref}
+						<span class="ml-2 text-text-faint">@{repo.ref}</span>
+					{/if}
+					{#if repo.paths?.length}
+						<div class="mt-1 flex flex-wrap gap-1.5">
+							{#each repo.paths as path (path)}
+								<code
+									class="rounded border border-border bg-bg px-1.5 py-0.5 text-[12px] text-text-muted"
+								>
+									{path}
+								</code>
+							{/each}
+						</div>
+					{/if}
+					{#if repo.note}
+						<p class="mt-1 text-[12px] text-text-faint">{repo.note}</p>
+					{/if}
+				</div>
 			{/each}
 		</div>
 	{/if}

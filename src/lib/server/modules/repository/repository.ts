@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '@/db';
-import { documents } from '@/db/schema';
+import { documents, type RepoRef } from '@/db/schema';
+
+export type { RepoRef };
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -12,6 +14,8 @@ export interface Document {
 	title: string;
 	content: string;
 	tags: string[];
+	/** Git repositories this document describes (descriptive metadata only). */
+	repos: RepoRef[];
 	createdAt: string;
 	updatedAt: string;
 	date: string | null;
@@ -40,6 +44,7 @@ export interface DocumentRepository {
 		title: string;
 		content: string;
 		tags?: string[];
+		repos?: RepoRef[];
 		date?: string;
 		parentId?: string;
 		embedding?: number[];
@@ -62,6 +67,7 @@ export interface DocumentRepository {
 			title: string;
 			content: string;
 			tags?: string[];
+			repos?: RepoRef[];
 			date?: string;
 			embedding?: number[];
 			userId?: string;
@@ -72,6 +78,7 @@ export interface DocumentRepository {
 			title: string;
 			content: string;
 			tags?: string[];
+			repos?: RepoRef[];
 			date?: string;
 			parentId: string;
 			embedding: number[];
@@ -122,6 +129,7 @@ function rowToDocument(row: {
 	title: string;
 	content: string;
 	tags: string[];
+	repos: RepoRef[];
 	createdAt: string;
 	updatedAt: string;
 	date: string | null;
@@ -134,6 +142,7 @@ function rowToDocument(row: {
 		title: row.title,
 		content: row.content,
 		tags: row.tags,
+		repos: row.repos,
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
 		date: row.date,
@@ -153,6 +162,7 @@ export class PgDocumentRepository implements DocumentRepository {
 		title: string;
 		content: string;
 		tags?: string[];
+		repos?: RepoRef[];
 		date?: string;
 		parentId?: string;
 		embedding?: number[];
@@ -169,6 +179,7 @@ export class PgDocumentRepository implements DocumentRepository {
 				title: params.title,
 				content: params.content,
 				tags: params.tags ?? [],
+				repos: params.repos ?? [],
 				embedding: params.embedding ?? null,
 				createdAt: now,
 				updatedAt: now,
@@ -183,6 +194,7 @@ export class PgDocumentRepository implements DocumentRepository {
 					title: params.title,
 					content: params.content,
 					tags: params.tags ?? [],
+					repos: params.repos ?? [],
 					embedding: params.embedding ?? null,
 					updatedAt: now,
 					date: params.date !== undefined ? params.date : sql`${documents.date}`,
@@ -205,6 +217,7 @@ export class PgDocumentRepository implements DocumentRepository {
 			title: params.title,
 			content: params.content,
 			tags: params.tags ?? [],
+			repos: params.repos ?? [],
 			createdAt: row.createdAt,
 			updatedAt: now,
 			date: row.date,
@@ -224,6 +237,7 @@ export class PgDocumentRepository implements DocumentRepository {
 			title: string;
 			content: string;
 			tags?: string[];
+			repos?: RepoRef[];
 			date?: string;
 			embedding?: number[];
 			userId?: string;
@@ -234,6 +248,7 @@ export class PgDocumentRepository implements DocumentRepository {
 			title: string;
 			content: string;
 			tags?: string[];
+			repos?: RepoRef[];
 			date?: string;
 			parentId: string;
 			embedding: number[];
@@ -252,6 +267,7 @@ export class PgDocumentRepository implements DocumentRepository {
 					title: params.parent.title,
 					content: params.parent.content,
 					tags: params.parent.tags ?? [],
+					repos: params.parent.repos ?? [],
 					embedding: params.parent.embedding ?? null,
 					createdAt: now,
 					updatedAt: now,
@@ -266,6 +282,7 @@ export class PgDocumentRepository implements DocumentRepository {
 						title: params.parent.title,
 						content: params.parent.content,
 						tags: params.parent.tags ?? [],
+						repos: params.parent.repos ?? [],
 						embedding: params.parent.embedding ?? null,
 						updatedAt: now,
 						date: params.parent.date !== undefined ? params.parent.date : sql`${documents.date}`,
@@ -292,6 +309,7 @@ export class PgDocumentRepository implements DocumentRepository {
 						title: chunk.title,
 						content: chunk.content,
 						tags: chunk.tags ?? [],
+						repos: chunk.repos ?? [],
 						embedding: chunk.embedding,
 						createdAt: now,
 						updatedAt: now,
@@ -306,6 +324,7 @@ export class PgDocumentRepository implements DocumentRepository {
 							title: chunk.title,
 							content: chunk.content,
 							tags: chunk.tags ?? [],
+							repos: chunk.repos ?? [],
 							embedding: chunk.embedding,
 							updatedAt: now,
 							date: chunk.date !== undefined ? chunk.date : sql`${documents.date}`,
@@ -320,6 +339,7 @@ export class PgDocumentRepository implements DocumentRepository {
 				title: params.parent.title,
 				content: params.parent.content,
 				tags: params.parent.tags ?? [],
+				repos: params.parent.repos ?? [],
 				createdAt: parentRow.createdAt,
 				updatedAt: now,
 				date: parentRow.date,
@@ -352,6 +372,7 @@ export class PgDocumentRepository implements DocumentRepository {
 				title: documents.title,
 				content: documents.content,
 				tags: documents.tags,
+				repos: documents.repos,
 				createdAt: documents.createdAt,
 				updatedAt: documents.updatedAt,
 				date: documents.date,
@@ -385,6 +406,7 @@ export class PgDocumentRepository implements DocumentRepository {
 				title: documents.title,
 				content: documents.content,
 				tags: documents.tags,
+				repos: documents.repos,
 				createdAt: documents.createdAt,
 				updatedAt: documents.updatedAt,
 				date: documents.date,
@@ -418,6 +440,7 @@ export class PgDocumentRepository implements DocumentRepository {
 				title: documents.title,
 				content: documents.content,
 				tags: documents.tags,
+				repos: documents.repos,
 				createdAt: documents.createdAt,
 				updatedAt: documents.updatedAt,
 				date: documents.date,

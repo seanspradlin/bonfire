@@ -7,12 +7,35 @@ import { ingestDocument } from '@/modules/ingestion';
 import {
 	applyReranking,
 	deduplicateByBestSimilarity,
-	formatSearchResult
+	formatSearchResult,
+	mergeRepoRefs,
+	type RepoSourceDocument,
+	type ResolvedRepoRef
 } from '@/modules/mcp/searchResults';
 import type { DocumentRepository, SearchResult } from '@/modules/repository';
 import type { StorageProvider } from '@/modules/storage';
 import type { VisionProvider } from '@/modules/vision';
 import type { WikiPageRepository } from '@/modules/wiki';
+
+// ---------------------------------------------------------------------------
+// Shared Zod schemas
+// ---------------------------------------------------------------------------
+
+/**
+ * A reference from a document to a git repository it describes. Descriptive
+ * metadata only — Bonfire never reads, clones, or fetches the referenced code.
+ */
+const repoRefSchema = z.object({
+	url: z
+		.string()
+		.describe('Repository URL or shorthand, e.g. "https://github.com/org/repo" or "org/repo"'),
+	paths: z
+		.array(z.string())
+		.optional()
+		.describe('Relevant files or directories within the repo, e.g. ["src/auth/guards.ts"]'),
+	ref: z.string().optional().describe('Optional branch, tag, or commit'),
+	note: z.string().optional().describe('Optional note on why this repo is relevant to the document')
+});
 
 // ---------------------------------------------------------------------------
 // Shared dependency shape
@@ -67,6 +90,71 @@ export async function resolveArtifactUrls(
 			}
 		})
 	);
+}
+
+// ---------------------------------------------------------------------------
+// Repository resolution (find_repositories)
+// ---------------------------------------------------------------------------
+
+/**
+ * Run a semantic search over the knowledge base and return the deduplicated
+ * union of git repositories referenced by the matching documents, each
+ * annotated with the source documents that referenced it.
+ *
+ * This is the "topic → repos/paths" resolver shared by the MCP `find_repositories`
+ * tool and the chat agent. It returns repo *metadata* only — Bonfire never reads
+ * or fetches the referenced source code.
+ *
+ * Search mirrors `query_knowledge_base`: it fans out across the question plus any
+ * extra queries, deduplicates by best similarity, and optionally reranks. Chunk
+ * results are normalized back to their parent document (parent id + clean title)
+ * before the repo references are merged.
+ */
+export async function resolveRepositories(
+	params: { question: string; extra_queries?: string[]; tag?: string; limit?: number },
+	deps: {
+		repo: DocumentRepository;
+		embedder: EmbeddingProvider;
+		reranker: RerankProvider | null;
+	},
+	signal?: AbortSignal
+): Promise<ResolvedRepoRef[]> {
+	const { repo, embedder, reranker } = deps;
+	const finalLimit = params.limit ?? 8;
+	const perQueryLimit = reranker ? 20 : Math.min(20, finalLimit + 2);
+
+	const queries = [params.question, ...(params.extra_queries ?? [])].filter((q) => q.length > 0);
+	if (queries.length === 0) return [];
+
+	if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+	const allResults = await Promise.all(
+		queries.map(async (q) => {
+			if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+			const embedding = await embedder.embed(q);
+			return repo.search({ embedding, limit: perQueryLimit, tag: params.tag });
+		})
+	);
+
+	const dedupLimit = reranker ? Math.min(finalLimit * 4, 40) : finalLimit;
+	const merged = deduplicateByBestSimilarity(allResults, dedupLimit);
+
+	if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+	const results =
+		reranker && merged.length > 0
+			? await applyReranking(reranker, params.question, merged, finalLimit)
+			: merged.slice(0, finalLimit);
+
+	// Normalize chunk results to parent-level source documents, deduped by id —
+	// chunks of the same document carry identical repos, so keep the first seen.
+	const byId = new Map<string, RepoSourceDocument>();
+	for (const r of results) {
+		const id = r.parentId ?? r.id;
+		if (byId.has(id)) continue;
+		const title = r.parentId ? r.title.replace(/ \[\d+\/\d+\]$/, '') : r.title;
+		byId.set(id, { id, title, repos: r.repos });
+	}
+
+	return mergeRepoRefs(Array.from(byId.values()));
 }
 
 export interface ServerDeps extends SharedDeps {
@@ -128,6 +216,13 @@ export function createServer({
 					.array(z.string())
 					.optional()
 					.describe("Tags for categorisation and filtering (e.g. ['marketing', 'hubspot'])"),
+				repos: repoRefSchema
+					.array()
+					.optional()
+					.describe(
+						'Git repositories this document describes, so agents know where the relevant ' +
+							'source code lives. Descriptive metadata only — Bonfire never reads the code.'
+					),
 				date: z.iso
 					.datetime()
 					.optional()
@@ -145,7 +240,7 @@ export function createServer({
 					.describe('Document ID — omit to create a new document')
 			}
 		},
-		async ({ title, content, tags, date, id }) => {
+		async ({ title, content, tags, repos, date, id }) => {
 			// Authorize: creating new content requires editor/admin; overwriting an
 			// existing document requires ownership (editor) or admin.
 			if (!canEdit(caller)) return forbiddenResult('add documents');
@@ -156,7 +251,11 @@ export function createServer({
 				}
 			}
 
-			const doc = await ingestDocument({ id, title, content, tags, date, userId }, repo, embedder);
+			const doc = await ingestDocument(
+				{ id, title, content, tags, repos, date, userId },
+				repo,
+				embedder
+			);
 
 			return {
 				content: [
@@ -167,6 +266,7 @@ export function createServer({
 								id: doc.id,
 								title: doc.title,
 								tags: doc.tags,
+								repos: doc.repos,
 								date: doc.date,
 								createdAt: doc.createdAt,
 								updatedAt: doc.updatedAt
@@ -326,6 +426,7 @@ export function createServer({
 				id: d.id,
 				title: d.title,
 				tags: d.tags,
+				repos: d.repos,
 				date: d.date,
 				updatedAt: d.updatedAt
 			}));
@@ -411,6 +512,61 @@ export function createServer({
 
 			return {
 				content: [{ type: 'text', text: JSON.stringify(formatted, null, 2) }]
+			};
+		}
+	);
+
+	// -------------------------------------------------------------------------
+	// Tool: find_repositories
+	// -------------------------------------------------------------------------
+
+	server.registerTool(
+		'find_repositories',
+		{
+			title: 'Find Repositories',
+			description:
+				'Given a topic or question, return the git repositories (and specific paths) ' +
+				'that the most relevant knowledge base documents reference. Use this to find ' +
+				'WHERE the relevant source code lives before reading it with your own GitHub ' +
+				'tools — Bonfire returns repository metadata only and never reads, clones, or ' +
+				'fetches source code itself. Returns a deduplicated list of repositories, each ' +
+				'annotated with the documents that referenced it.',
+			inputSchema: {
+				question: z.string().describe('The topic or question to resolve to relevant repositories'),
+				extra_queries: z
+					.array(z.string())
+					.max(4)
+					.optional()
+					.describe('Up to 4 additional search queries to broaden retrieval'),
+				tag: z.string().optional().describe('Restrict the search to documents with this tag'),
+				limit: z
+					.number()
+					.int()
+					.min(1)
+					.max(20)
+					.optional()
+					.describe('Maximum number of documents to consider when collecting repos (default: 8)')
+			}
+		},
+		async ({ question, extra_queries, tag, limit }) => {
+			const repos = await resolveRepositories(
+				{ question, extra_queries, tag, limit },
+				{ repo, embedder, reranker }
+			);
+
+			if (repos.length === 0) {
+				return {
+					content: [
+						{
+							type: 'text',
+							text: 'No repositories found — the matching documents do not reference any git repositories.'
+						}
+					]
+				};
+			}
+
+			return {
+				content: [{ type: 'text', text: JSON.stringify(repos, null, 2) }]
 			};
 		}
 	);
