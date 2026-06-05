@@ -3,6 +3,9 @@
 	"private": true,
 	"version": "0.0.1",
 	"type": "module",
+	"resolutions": {
+		"kysely": "0.28.17"
+	},
 	"scripts": {
 		"dev": "vite dev",
 		"build": "vite build",
