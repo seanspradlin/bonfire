@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { env } from '$env/dynamic/private';
 import { parseAiJsonResponse } from '@/modules/shared/parseAiJsonResponse';
+import { building } from '$app/environment';
 
 export interface PdfInput {
 	data: string;
@@ -108,6 +109,7 @@ class AnthropicPdfProvider implements PdfProvider {
 export function createPdfProvider(): PdfProvider {
 	const apiKey = env.ANTHROPIC_API_KEY;
 	if (!apiKey) {
+		if (building) return new AnthropicPdfProvider('build-only-anthropic-api-key-placeholder');
 		throw new Error('ANTHROPIC_API_KEY environment variable is required for PDF analysis.');
 	}
 	return new AnthropicPdfProvider(apiKey);

@@ -6,6 +6,7 @@
  */
 
 import OpenAI from 'openai';
+import { building } from '$app/environment';
 import { env } from '$env/dynamic/private';
 
 export const EMBEDDING_DIMENSIONS = 1536;
@@ -64,8 +65,9 @@ class OpenAIEmbeddingProvider implements EmbeddingProvider {
 // ---------------------------------------------------------------------------
 
 export function createEmbeddingProvider(): EmbeddingProvider {
-	const apiKey = env.OPENAI_API_KEY;
+	const apiKey = env.OPENAI_API_KEY?.trim();
 	if (!apiKey) {
+		if (building) return new OpenAIEmbeddingProvider('build-only-openai-api-key-placeholder');
 		throw new Error(
 			'OPENAI_API_KEY environment variable is required. ' +
 				'Set it to your OpenAI API key to enable semantic search.'
