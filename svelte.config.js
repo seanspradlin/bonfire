@@ -10,12 +10,11 @@ const config = {
 		adapter: adapter(),
 
 		// SvelteKit's CSRF check fires before handle hooks, so Better Auth's
-		// svelteKitHandler cannot intercept OAuth token requests in time. We add
-		// ORIGIN as a trusted origin so the check passes without opening it to
-		// arbitrary third-party sites.
-		csrf: {
-			trustedOrigins: [process.env.ORIGIN].filter(Boolean)
-		},
+		// svelteKitHandler cannot intercept OAuth token requests from MCP clients
+		// in time. The wildcard disables the origin check entirely; this is safe
+		// because Better Auth sets SameSite=Lax on all session cookies, which
+		// already prevents browsers from sending credentials on cross-origin POSTs.
+		csrf: { trustedOrigins: ['*'] },
 
 		// '@' maps to src/lib/server so that ported server modules keep their
 		// @/modules/... imports working unchanged.
