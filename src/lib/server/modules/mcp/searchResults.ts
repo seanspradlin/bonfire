@@ -6,7 +6,7 @@
  */
 
 import type { RerankProvider } from '@/modules/embedding';
-import type { SearchResult } from '@/modules/repository';
+import type { RepoRef, SearchResult } from '@/modules/repository';
 
 // ---------------------------------------------------------------------------
 // Reranking
@@ -60,6 +60,8 @@ export interface FormattedSearchResult {
 	parentId: string | null;
 	title: string;
 	tags: string[];
+	/** Git repositories the document references (descriptive metadata only). */
+	repos: RepoRef[];
 	similarity: number;
 	content: string;
 	/** Pre-signed URL for the original uploaded artifact, or null if unavailable. */
@@ -95,6 +97,7 @@ export function formatSearchResult(
 		parentId: result.parentId,
 		title,
 		tags: result.tags,
+		repos: result.repos,
 		similarity: Math.round(result.similarity * 1000) / 1000,
 		content: result.content,
 		artifactUrl
@@ -137,4 +140,81 @@ export function deduplicateByBestSimilarity(
 	return Array.from(best.values())
 		.sort((a, b) => b.similarity - a.similarity)
 		.slice(0, limit);
+}
+
+// ---------------------------------------------------------------------------
+// Repository resolution (find_repositories)
+// ---------------------------------------------------------------------------
+
+/** A document that contributed one or more repo references, after normalization. */
+export interface RepoSourceDocument {
+	id: string;
+	title: string;
+	repos: RepoRef[];
+}
+
+/** A repo reference annotated with the documents that referenced it. */
+export interface ResolvedRepoRef extends RepoRef {
+	sources: Array<{ id: string; title: string }>;
+}
+
+/**
+ * Compute the deduplicated union of repo references across a set of source
+ * documents, annotating each with the documents that referenced it.
+ *
+ * Deduplication is by `url`. When the same url appears in multiple documents
+ * (or multiple times within one), `paths` and `sources` are merged and
+ * de-duplicated; the first non-empty `ref`/`note` seen wins (later documents
+ * may describe the same repo with no ref/note, which we don't want to lose).
+ *
+ * Source documents are expected to already be normalized to the parent level
+ * (parent id + clean title), since search results are chunk rows.
+ *
+ * This is a pure function so it can be unit-tested without a database.
+ */
+export function mergeRepoRefs(documents: RepoSourceDocument[]): ResolvedRepoRef[] {
+	const byUrl = new Map<string, ResolvedRepoRef>();
+	// Track which (url → source id) pairs we've recorded to avoid duplicate sources.
+	const seenSources = new Map<string, Set<string>>();
+
+	for (const doc of documents) {
+		for (const repo of doc.repos) {
+			if (!repo.url) continue;
+
+			let resolved = byUrl.get(repo.url);
+			if (!resolved) {
+				resolved = { url: repo.url, paths: [], sources: [] };
+				byUrl.set(repo.url, resolved);
+				seenSources.set(repo.url, new Set());
+			}
+
+			// Merge paths (dedup).
+			if (repo.paths) {
+				for (const p of repo.paths) {
+					if (!resolved.paths!.includes(p)) resolved.paths!.push(p);
+				}
+			}
+
+			// First non-empty ref/note wins.
+			if (repo.ref && !resolved.ref) resolved.ref = repo.ref;
+			if (repo.note && !resolved.note) resolved.note = repo.note;
+
+			// Record the source document once per url.
+			const sourceIds = seenSources.get(repo.url)!;
+			if (!sourceIds.has(doc.id)) {
+				sourceIds.add(doc.id);
+				resolved.sources.push({ id: doc.id, title: doc.title });
+			}
+		}
+	}
+
+	// Drop the empty paths array when nothing was collected, to keep output clean.
+	return Array.from(byUrl.values()).map((r) => {
+		if (r.paths && r.paths.length === 0) {
+			// eslint-disable-next-line @typescript-eslint/no-unused-vars
+			const { paths: _omit, ...rest } = r;
+			return rest;
+		}
+		return r;
+	});
 }

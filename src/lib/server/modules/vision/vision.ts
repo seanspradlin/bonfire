@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { building } from '$app/environment';
 import { env } from '$env/dynamic/private';
 import { parseAiJsonResponse } from '@/modules/shared/parseAiJsonResponse';
 
@@ -109,8 +110,9 @@ class AnthropicVisionProvider implements VisionProvider {
 }
 
 export function createVisionProvider(): VisionProvider {
-	const apiKey = env.ANTHROPIC_API_KEY;
+	const apiKey = env.ANTHROPIC_API_KEY?.trim();
 	if (!apiKey) {
+		if (building) return new AnthropicVisionProvider('build-only-anthropic-api-key-placeholder');
 		throw new Error('ANTHROPIC_API_KEY environment variable is required for image analysis.');
 	}
 	return new AnthropicVisionProvider(apiKey);

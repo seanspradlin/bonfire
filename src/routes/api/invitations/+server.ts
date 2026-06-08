@@ -52,7 +52,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	});
 
 	// Send the invitation email if Resend is configured; skip silently in dev.
-	const clientUrl = env.CLIENT_URL ?? env.ORIGIN ?? 'http://localhost:5173';
+	const clientUrl = env.ORIGIN ?? 'http://localhost:5173';
 	const inviteLink = `${clientUrl}/accept-invite?token=${token}`;
 	const resend = getResendClient();
 

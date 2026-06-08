@@ -1,0 +1,1 @@
+ALTER TABLE "documents" ADD COLUMN "repos" jsonb DEFAULT '[]'::jsonb NOT NULL;

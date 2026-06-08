@@ -1,3 +1,4 @@
+import { sequence } from '@sveltejs/kit/hooks';
 import type { Handle } from '@sveltejs/kit';
 import { building } from '$app/environment';
 import { auth, baseURL } from '$lib/server/auth';
@@ -13,49 +14,45 @@ import {
 
 let seeded = false;
 
-async function maybeSeeed() {
-	if (seeded || building) return;
-	seeded = true;
-	try {
-		const { seedInitialAdminUser } = await import('@/modules/auth/seed');
-		await seedInitialAdminUser();
-	} catch (err) {
-		console.warn('[hooks] seed failed (non-fatal):', err);
+const handleSeed: Handle = async ({ event, resolve }) => {
+	if (!seeded && !building) {
+		seeded = true;
+		try {
+			const { seedInitialAdminUser } = await import('@/modules/auth/seed');
+			await seedInitialAdminUser();
+		} catch (err) {
+			console.warn('[hooks] seed failed (non-fatal):', err);
+		}
 	}
-}
+	return resolve(event);
+};
 
 // ---------------------------------------------------------------------------
-// .well-known OAuth/OIDC metadata handler
+// .well-known OAuth/OIDC metadata
 //
-// RFC 8414 mandates these endpoints so MCP clients can perform discovery.
-// We intercept them before the SvelteKit router because SvelteKit doesn't
-// naturally route dot-prefixed path segments.
-//
-// Three paths are served:
-//   /.well-known/openid-configuration          — OIDC discovery
-//   /.well-known/oauth-authorization-server     — bare OAuth AS metadata
-//   /.well-known/oauth-authorization-server/api/auth
-//                                              — path-based discovery for
-//                                                issuer https://<host>/api/auth
-//   /.well-known/oauth-protected-resource       — resource server metadata
+// RFC 8414 mandates these endpoints for MCP client discovery. SvelteKit
+// doesn't route dot-prefixed path segments, so we intercept them here.
 // ---------------------------------------------------------------------------
 
-async function handleWellKnown(request: Request): Promise<Response | null> {
-	const url = new URL(request.url);
-	const path = url.pathname;
+const handleWellKnown: Handle = async ({ event, resolve }) => {
+	const { pathname } = new URL(event.request.url);
 
-	if (path === '/.well-known/openid-configuration') {
-		return oauthProviderOpenIdConfigMetadata(auth)(request);
+	if (pathname === '/.well-known/openid-configuration') {
+		return oauthProviderOpenIdConfigMetadata(auth)(event.request);
 	}
 
 	if (
-		path === '/.well-known/oauth-authorization-server' ||
-		path === '/.well-known/oauth-authorization-server/api/auth'
+		pathname === '/.well-known/oauth-authorization-server' ||
+		pathname === '/.well-known/oauth-authorization-server/api/auth'
 	) {
-		return oauthProviderAuthServerMetadata(auth)(request);
+		return oauthProviderAuthServerMetadata(auth)(event.request);
 	}
 
-	if (path === '/.well-known/oauth-protected-resource') {
+	if (
+		pathname === '/.well-known/oauth-protected-resource' ||
+		pathname === '/.well-known/oauth-protected-resource/mcp' ||
+		pathname === '/.well-known/oauth-protected-resource/api/auth'
+	) {
 		return new Response(
 			JSON.stringify({
 				resource: `${baseURL}/mcp`,
@@ -66,33 +63,34 @@ async function handleWellKnown(request: Request): Promise<Response | null> {
 		);
 	}
 
-	return null;
-}
+	return resolve(event);
+};
 
 // ---------------------------------------------------------------------------
-// Main hook — session population + auth handler
+// Session population
+//
+// Errors here are expected for OAuth Bearer tokens (JWT for MCP) — those are
+// not session tokens, so we silently fall through with no session populated.
 // ---------------------------------------------------------------------------
 
-export const handle: Handle = async ({ event, resolve }) => {
-	// Seed on first request so the admin user exists before any real traffic.
-	await maybeSeeed();
-
-	// Short-circuit .well-known requests before they reach the router.
-	const wellKnownResponse = await handleWellKnown(event.request);
-	if (wellKnownResponse) return wellKnownResponse;
-
-	// Populate event.locals with the session from the incoming request headers.
-	// Errors here are expected for OAuth Bearer tokens — those are not session
-	// tokens, so we silently fall through with no session.
+const handleSession: Handle = async ({ event, resolve }) => {
 	try {
 		const session = await auth.api.getSession({ headers: event.request.headers });
 		if (session) {
-			event.locals.session = session.session;
 			event.locals.user = session.user;
+			event.locals.session = session.session;
 		}
 	} catch {
 		// Not a session token (e.g. Bearer JWT for MCP) — ignore.
 	}
-
-	return svelteKitHandler({ event, resolve, auth, building });
+	return resolve(event);
 };
+
+// ---------------------------------------------------------------------------
+// Better Auth request handler
+// ---------------------------------------------------------------------------
+
+const handleAuth: Handle = ({ event, resolve }) =>
+	svelteKitHandler({ event, resolve, auth, building });
+
+export const handle = sequence(handleSeed, handleWellKnown, handleSession, handleAuth);

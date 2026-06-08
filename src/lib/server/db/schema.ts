@@ -13,6 +13,22 @@ import {
 // Knowledge base tables
 // ---------------------------------------------------------------------------
 
+/**
+ * A reference from a document to a git repository (and optionally specific
+ * paths within it) that the document describes. This is descriptive metadata
+ * only — Bonfire never reads, clones, or proxies the referenced source code.
+ */
+export interface RepoRef {
+	/** Repository URL or shorthand, e.g. "https://github.com/org/repo" or "org/repo". */
+	url: string;
+	/** Relevant files/dirs within the repo, e.g. ["src/auth/guards.ts"]. */
+	paths?: string[];
+	/** Optional branch, tag, or commit. */
+	ref?: string;
+	/** Optional note on why this repo is relevant to the document. */
+	note?: string;
+}
+
 export const documents = pgTable(
 	'documents',
 	{
@@ -21,6 +37,7 @@ export const documents = pgTable(
 		title: text('title').notNull(),
 		content: text('content').notNull(),
 		tags: jsonb('tags').notNull().$type<string[]>().default([]),
+		repos: jsonb('repos').notNull().$type<RepoRef[]>().default([]),
 		embedding: vector('embedding', { dimensions: 1536 }),
 		createdAt: text('created_at').notNull(),
 		updatedAt: text('updated_at').notNull(),

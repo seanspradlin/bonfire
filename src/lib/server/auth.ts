@@ -5,6 +5,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { sveltekitCookies } from 'better-auth/svelte-kit';
 import { admin, jwt, username } from 'better-auth/plugins';
 import { sql } from 'drizzle-orm';
+import { building } from '$app/environment';
 import { getRequestEvent } from '$app/server';
 import { env } from '$env/dynamic/private';
 import { db } from '$lib/server/db';
@@ -25,6 +26,13 @@ import {
 // for all Better Auth endpoints. Falls back to localhost for dev convenience.
 export const baseURL = env.ORIGIN ?? env.BETTER_AUTH_URL ?? 'http://localhost:5173';
 
+function resolveBetterAuthSecret() {
+	const secret = env.BETTER_AUTH_SECRET?.trim();
+	if (secret) return secret;
+	if (building) return 'build-only-better-auth-secret-placeholder';
+	throw new Error('BETTER_AUTH_SECRET is not set');
+}
+
 export const auth = betterAuth({
 	database: drizzleAdapter(db, {
 		provider: 'pg',
@@ -43,8 +51,8 @@ export const auth = betterAuth({
 	baseURL,
 	// All auth endpoints live under /api/auth so the client's basePath matches.
 	basePath: '/api/auth',
-	trustedOrigins: [baseURL, env.CLIENT_URL ?? 'http://localhost:5173'].filter(Boolean),
-	secret: env.BETTER_AUTH_SECRET,
+	trustedOrigins: [baseURL].filter(Boolean),
+	secret: resolveBetterAuthSecret(),
 	hooks: {
 		// Sign-up is invitation-only. Email/password sign-up must stay enabled so
 		// the invitation-accept flow (auth.api.signUpEmail) works, but we reject
@@ -128,7 +136,8 @@ export const auth = betterAuth({
 			allowDynamicClientRegistration: true,
 			allowUnauthenticatedClientRegistration: true,
 			scopes: ['openid', 'profile', 'email', 'offline_access'],
-			validAudiences: [baseURL, `${baseURL}/mcp`]
+			validAudiences: [baseURL, `${baseURL}/mcp`],
+			refreshTokenExpiresIn: 6 * 30 * 24 * 60 * 60 // 6 months; default is 30 days
 		}),
 		// sveltekitCookies MUST be the last plugin in the array
 		sveltekitCookies(getRequestEvent)

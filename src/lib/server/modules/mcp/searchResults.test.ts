@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { deduplicateByBestSimilarity, formatSearchResult } from './searchResults';
+import {
+	deduplicateByBestSimilarity,
+	formatSearchResult,
+	mergeRepoRefs,
+	type RepoSourceDocument
+} from './searchResults';
 import type { SearchResult } from '@/modules/repository';
 
 // ---------------------------------------------------------------------------
@@ -13,6 +18,7 @@ function makeResult(
 		title: 'Test Document',
 		content: 'Some content.',
 		tags: [],
+		repos: [],
 		createdAt: '2026-01-01T00:00:00.000Z',
 		updatedAt: '2026-01-01T00:00:00.000Z',
 		date: null,
@@ -92,6 +98,17 @@ describe('formatSearchResult', () => {
 		const result = makeResult({ id: 'doc1', similarity: 0.9, artifactKey: null });
 		expect(formatSearchResult(result, null).artifactUrl).toBeNull();
 	});
+
+	it('defaults repos to an empty array', () => {
+		const result = makeResult({ id: 'doc1', similarity: 0.9 });
+		expect(formatSearchResult(result, null).repos).toEqual([]);
+	});
+
+	it('includes the document repos in the formatted result', () => {
+		const repos = [{ url: 'org/repo', paths: ['src/index.ts'] }];
+		const result = makeResult({ id: 'doc1', similarity: 0.9, repos });
+		expect(formatSearchResult(result, null).repos).toEqual(repos);
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -145,5 +162,78 @@ describe('deduplicateByBestSimilarity', () => {
 		];
 		const merged = deduplicateByBestSimilarity([results], 10);
 		expect(merged).toHaveLength(2);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// mergeRepoRefs
+// ---------------------------------------------------------------------------
+
+describe('mergeRepoRefs', () => {
+	function makeSource(overrides: Partial<RepoSourceDocument> & { id: string }): RepoSourceDocument {
+		return { title: `Doc ${overrides.id}`, repos: [], ...overrides };
+	}
+
+	it('returns an empty array when no documents reference repos', () => {
+		expect(mergeRepoRefs([])).toEqual([]);
+		expect(mergeRepoRefs([makeSource({ id: 'a' })])).toEqual([]);
+	});
+
+	it('skips repo refs with an empty url', () => {
+		const merged = mergeRepoRefs([makeSource({ id: 'a', repos: [{ url: '' }] })]);
+		expect(merged).toEqual([]);
+	});
+
+	it('annotates each repo with its source documents', () => {
+		const merged = mergeRepoRefs([
+			makeSource({ id: 'a', title: 'Auth Doc', repos: [{ url: 'org/auth' }] })
+		]);
+		expect(merged).toEqual([{ url: 'org/auth', sources: [{ id: 'a', title: 'Auth Doc' }] }]);
+	});
+
+	it('dedupes by url, merging paths and sources across documents', () => {
+		const merged = mergeRepoRefs([
+			makeSource({ id: 'a', title: 'A', repos: [{ url: 'org/repo', paths: ['src/a.ts'] }] }),
+			makeSource({ id: 'b', title: 'B', repos: [{ url: 'org/repo', paths: ['src/b.ts'] }] })
+		]);
+
+		expect(merged).toHaveLength(1);
+		expect(merged[0].url).toBe('org/repo');
+		expect(merged[0].paths).toEqual(['src/a.ts', 'src/b.ts']);
+		expect(merged[0].sources).toEqual([
+			{ id: 'a', title: 'A' },
+			{ id: 'b', title: 'B' }
+		]);
+	});
+
+	it('dedupes repeated paths and repeated source documents', () => {
+		const merged = mergeRepoRefs([
+			makeSource({
+				id: 'a',
+				repos: [
+					{ url: 'org/repo', paths: ['src/x.ts'] },
+					{ url: 'org/repo', paths: ['src/x.ts'] }
+				]
+			})
+		]);
+
+		expect(merged).toHaveLength(1);
+		expect(merged[0].paths).toEqual(['src/x.ts']);
+		expect(merged[0].sources).toHaveLength(1);
+	});
+
+	it('keeps the first non-empty ref and note seen for a url', () => {
+		const merged = mergeRepoRefs([
+			makeSource({ id: 'a', repos: [{ url: 'org/repo', ref: 'main', note: 'first' }] }),
+			makeSource({ id: 'b', repos: [{ url: 'org/repo', ref: 'dev', note: 'second' }] })
+		]);
+
+		expect(merged[0].ref).toBe('main');
+		expect(merged[0].note).toBe('first');
+	});
+
+	it('omits the paths field when no paths were collected', () => {
+		const merged = mergeRepoRefs([makeSource({ id: 'a', repos: [{ url: 'org/repo' }] })]);
+		expect('paths' in merged[0]).toBe(false);
 	});
 });

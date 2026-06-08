@@ -5,7 +5,7 @@
 	import Icon from '$lib/Icon.svelte';
 	import IconBtn from '$lib/IconBtn.svelte';
 	import PageHeader from '$lib/PageHeader.svelte';
-	import type { Document } from '$lib/types/document';
+	import type { Document, RepoRef } from '$lib/types/document';
 	import Markdown from '$lib/Markdown.svelte';
 	import { formatRelativeTime } from '$lib/utils/dateFormat';
 
@@ -81,6 +81,7 @@
 		title: string;
 		content: string;
 		tags: string[];
+		repos: RepoRef[];
 		date: string;
 	}) {
 		if (!selectedDoc) return;
@@ -91,6 +92,7 @@
 				title: updates.title,
 				content: updates.content,
 				tags: updates.tags,
+				repos: updates.repos,
 				...(updates.date ? { date: updates.date } : {})
 			})
 		});

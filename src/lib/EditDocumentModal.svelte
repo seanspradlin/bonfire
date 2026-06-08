@@ -2,7 +2,7 @@
 	import { untrack } from 'svelte';
 	import Btn from '$lib/Btn.svelte';
 	import Icon from '$lib/Icon.svelte';
-	import type { Document } from '$lib/types/document';
+	import type { Document, RepoRef } from '$lib/types/document';
 
 	interface Props {
 		isOpen: boolean;
@@ -12,6 +12,7 @@
 			title: string;
 			content: string;
 			tags: string[];
+			repos: RepoRef[];
 			date: string;
 		}) => Promise<void>;
 	}
@@ -25,8 +26,51 @@
 
 	let title = $state('');
 	let tagsRaw = $state('');
+	let reposRaw = $state('');
 	let content = $state('');
 	let date = $state('');
+
+	/**
+	 * Serialise repo references to one line each: `url` or `url | path1, path2`.
+	 * The `ref`/`note` fields aren't shown in this minimal editor but are
+	 * preserved across edits (see parseRepos).
+	 */
+	function serializeRepos(repos: RepoRef[]): string {
+		return repos
+			.map((r) => (r.paths && r.paths.length > 0 ? `${r.url} | ${r.paths.join(', ')}` : r.url))
+			.join('\n');
+	}
+
+	/**
+	 * Parse the textarea back into RepoRef[]. Each non-empty line is
+	 * `url` or `url | path1, path2`. Any `ref`/`note` previously set on a repo
+	 * with the same url (e.g. via MCP) is preserved so the UI never silently
+	 * drops it.
+	 */
+	function parseRepos(raw: string, existing: RepoRef[]): RepoRef[] {
+		const byUrl = new Map(existing.map((r) => [r.url, r]));
+		return raw
+			.split('\n')
+			.map((line) => line.trim())
+			.filter(Boolean)
+			.map((line) => {
+				const [urlPart, pathsPart] = line.split('|', 2);
+				const url = urlPart.trim();
+				const paths = pathsPart
+					? pathsPart
+							.split(',')
+							.map((p) => p.trim())
+							.filter(Boolean)
+					: [];
+				const prev = byUrl.get(url);
+				const repo: RepoRef = { url };
+				if (paths.length > 0) repo.paths = paths;
+				if (prev?.ref) repo.ref = prev.ref;
+				if (prev?.note) repo.note = prev.note;
+				return repo;
+			})
+			.filter((r) => r.url.length > 0);
+	}
 
 	$effect(() => {
 		if (!dialogEl) return;
@@ -34,6 +78,7 @@
 			untrack(() => {
 				title = document!.title;
 				tagsRaw = document!.tags.join(', ');
+				reposRaw = serializeRepos(document!.repos ?? []);
 				content = document!.content;
 				date = document!.date ?? '';
 				error = '';
@@ -62,10 +107,18 @@
 			.map((t) => t.trim())
 			.filter(Boolean);
 
+		const repos = parseRepos(reposRaw, document?.repos ?? []);
+
 		isLoading = true;
 		error = '';
 		try {
-			await onSave({ title: trimmedTitle, content: trimmedContent, tags, date: date.trim() });
+			await onSave({
+				title: trimmedTitle,
+				content: trimmedContent,
+				tags,
+				repos,
+				date: date.trim()
+			});
 			handleClose();
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to save document';
@@ -141,6 +194,23 @@
 					class="h-[38px] text-[13px]"
 					disabled={isLoading}
 				/>
+			</div>
+
+			<div>
+				<label class="mb-1.5 block text-[13px] font-medium text-text-muted" for="edit-doc-repos">
+					Repositories <span class="font-normal text-text-faint"
+						>(one per line — <code>owner/repo</code> or
+						<code>owner/repo | path1, path2</code>)</span
+					>
+				</label>
+				<textarea
+					id="edit-doc-repos"
+					bind:value={reposRaw}
+					placeholder="e.g. org/backend | src/auth/guards.ts, src/db/schema.ts&#10;org/frontend"
+					rows={3}
+					class="resize-y font-mono text-[13px] leading-relaxed"
+					disabled={isLoading}
+				></textarea>
 			</div>
 
 			<div>

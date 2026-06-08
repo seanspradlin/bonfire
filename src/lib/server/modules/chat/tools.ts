@@ -6,7 +6,7 @@ import {
 	type FormattedSearchResult,
 	formatSearchResult
 } from '@/modules/mcp/searchResults';
-import { resolveArtifactUrls } from '@/modules/mcp/tools';
+import { resolveArtifactUrls, resolveRepositories } from '@/modules/mcp/tools';
 import type { DocumentRepository } from '@/modules/repository';
 import type { StorageProvider } from '@/modules/storage';
 
@@ -103,6 +103,41 @@ export const CHAT_TOOLS: Tool[] = [
 				}
 			}
 		}
+	},
+	{
+		name: 'find_repositories',
+		description:
+			'Given a topic or question, return the git repositories (and specific paths) that ' +
+			'the most relevant knowledge base documents reference. Use this when the user asks ' +
+			'how to implement, change, or debug code, so you can tell them WHERE the relevant ' +
+			'source lives. This returns repository metadata only — you cannot read repository ' +
+			'contents; point the user (or their tools) to the repos/paths instead.',
+		input_schema: {
+			type: 'object',
+			properties: {
+				question: {
+					type: 'string',
+					description: 'The topic or question to resolve to relevant repositories'
+				},
+				extra_queries: {
+					type: 'array',
+					items: { type: 'string' },
+					maxItems: 4,
+					description: 'Up to 4 additional search queries to broaden retrieval'
+				},
+				tag: {
+					type: 'string',
+					description: 'Restrict the search to documents with this tag'
+				},
+				limit: {
+					type: 'number',
+					minimum: 1,
+					maximum: 20,
+					description: 'Maximum number of documents to consider when collecting repos (default: 8)'
+				}
+			},
+			required: ['question']
+		}
 	}
 ];
 
@@ -187,6 +222,8 @@ export async function runChatTool(
 			return runGetDocument(args, ctx);
 		case 'list_documents':
 			return runListDocuments(args, ctx);
+		case 'find_repositories':
+			return runFindRepositories(args, ctx);
 		default:
 			return {
 				text: JSON.stringify({ error: `Unknown tool: ${name}` }),
@@ -339,4 +376,47 @@ async function runListDocuments(
 		date: d.date
 	}));
 	return { text: JSON.stringify({ results: summary }), sources: [] };
+}
+
+async function runFindRepositories(
+	args: Record<string, unknown>,
+	{ repo, embedder, reranker, signal }: ChatToolContext
+): Promise<ChatToolResult> {
+	const question = String(args.question ?? '');
+	const extra = Array.isArray(args.extra_queries)
+		? args.extra_queries.filter((q): q is string => typeof q === 'string')
+		: [];
+	const tag = typeof args.tag === 'string' ? args.tag : undefined;
+	const limit = typeof args.limit === 'number' ? args.limit : undefined;
+
+	if (!question) {
+		return { text: JSON.stringify({ error: 'question is required' }), sources: [] };
+	}
+
+	const repos = await resolveRepositories(
+		{ question, extra_queries: extra, tag, limit },
+		{ repo, embedder, reranker },
+		signal
+	);
+
+	if (repos.length === 0) {
+		return {
+			text: JSON.stringify({
+				repositories: [],
+				note: 'No repositories found — the matching documents do not reference any git repositories.'
+			}),
+			sources: []
+		};
+	}
+
+	// Surface the documents that contributed repos as citations.
+	const sources = new Map<string, ChatToolSource>();
+	for (const r of repos) {
+		for (const s of r.sources) sources.set(s.id, s);
+	}
+
+	return {
+		text: JSON.stringify({ repositories: repos }),
+		sources: Array.from(sources.values())
+	};
 }
