@@ -32,7 +32,11 @@ const repoRefSchema = z.object({
 	paths: z
 		.array(z.string())
 		.optional()
-		.describe('Relevant files or directories within the repo, e.g. ["src/auth/guards.ts"]'),
+		.describe(
+			'Relevant files or directories within the repo. When documenting a commit or PR, ' +
+				'list every changed file (e.g. ["src/auth/guards.ts", "src/routes/api/documents/+server.ts"]) ' +
+				'so callers can fetch the exact source via their own GitHub tools.'
+		),
 	ref: z.string().optional().describe('Optional branch, tag, or commit'),
 	note: z.string().optional().describe('Optional note on why this repo is relevant to the document')
 });
@@ -221,7 +225,9 @@ export function createServer({
 					.optional()
 					.describe(
 						'Git repositories this document describes, so agents know where the relevant ' +
-							'source code lives. Descriptive metadata only — Bonfire never reads the code.'
+							'source code lives. Descriptive metadata only — Bonfire never reads the code. ' +
+							'When documenting a code change, populate paths with the changed files — ' +
+							'the caller uses these with their GitHub tools to read source.'
 					),
 				date: z.iso
 					.datetime()
