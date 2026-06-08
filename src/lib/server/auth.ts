@@ -51,7 +51,7 @@ export const auth = betterAuth({
 	baseURL,
 	// All auth endpoints live under /api/auth so the client's basePath matches.
 	basePath: '/api/auth',
-	trustedOrigins: [baseURL, env.CLIENT_URL ?? 'http://localhost:5173'].filter(Boolean),
+	trustedOrigins: [baseURL].filter(Boolean),
 	secret: resolveBetterAuthSecret(),
 	hooks: {
 		// Sign-up is invitation-only. Email/password sign-up must stay enabled so

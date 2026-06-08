@@ -28,9 +28,11 @@ import type { WikiPageRepository } from '@/modules/wiki';
 const repoRefSchema = z.object({
 	url: z
 		.string()
+		.trim()
+		.min(1)
 		.describe('Repository URL or shorthand, e.g. "https://github.com/org/repo" or "org/repo"'),
 	paths: z
-		.array(z.string())
+		.array(z.string().trim().min(1))
 		.optional()
 		.describe(
 			'Relevant files or directories within the repo. When documenting a commit or PR, ' +

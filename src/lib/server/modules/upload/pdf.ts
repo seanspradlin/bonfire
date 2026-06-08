@@ -107,7 +107,7 @@ class AnthropicPdfProvider implements PdfProvider {
 }
 
 export function createPdfProvider(): PdfProvider {
-	const apiKey = env.ANTHROPIC_API_KEY;
+	const apiKey = env.ANTHROPIC_API_KEY?.trim();
 	if (!apiKey) {
 		if (building) return new AnthropicPdfProvider('build-only-anthropic-api-key-placeholder');
 		throw new Error('ANTHROPIC_API_KEY environment variable is required for PDF analysis.');
