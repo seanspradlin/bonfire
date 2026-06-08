@@ -48,7 +48,10 @@ const handleWellKnown: Handle = async ({ event, resolve }) => {
 		return oauthProviderAuthServerMetadata(auth)(event.request);
 	}
 
-	if (pathname === '/.well-known/oauth-protected-resource') {
+	if (
+		pathname === '/.well-known/oauth-protected-resource' ||
+		pathname === '/.well-known/oauth-protected-resource/api/auth'
+	) {
 		return new Response(
 			JSON.stringify({
 				resource: `${baseURL}/mcp`,

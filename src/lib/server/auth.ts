@@ -136,7 +136,8 @@ export const auth = betterAuth({
 			allowDynamicClientRegistration: true,
 			allowUnauthenticatedClientRegistration: true,
 			scopes: ['openid', 'profile', 'email', 'offline_access'],
-			validAudiences: [baseURL, `${baseURL}/mcp`]
+			validAudiences: [baseURL, `${baseURL}/mcp`],
+			refreshTokenExpiresIn: 6 * 30 * 24 * 60 * 60 // 6 months; default is 30 days
 		}),
 		// sveltekitCookies MUST be the last plugin in the array
 		sveltekitCookies(getRequestEvent)
