@@ -54,7 +54,7 @@
 			.map((line) => line.trim())
 			.filter(Boolean)
 			.map((line) => {
-				const [urlPart, pathsPart] = line.split('|');
+				const [urlPart, pathsPart] = line.split('|', 2);
 				const url = urlPart.trim();
 				const paths = pathsPart
 					? pathsPart

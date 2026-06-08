@@ -21,6 +21,7 @@ import type { RequestHandler } from './$types';
 // ---------------------------------------------------------------------------
 
 const SESSION_IDLE_TIMEOUT_MS = 12 * 60 * 60_000;
+const SESSION_MAX_AGE_MS = 24 * 60 * 60_000;
 const SESSION_SWEEP_INTERVAL_MS = 60_000;
 
 interface SessionEntry {
@@ -39,8 +40,9 @@ const jwks = createRemoteJWKSet(new URL(`${baseURL}/api/auth/jwks`));
 setInterval(() => {
 	const now = Date.now();
 	const idleCutoff = now - SESSION_IDLE_TIMEOUT_MS;
+	const ageCutoff = now - SESSION_MAX_AGE_MS;
 	for (const [sid, entry] of sessions) {
-		if (entry.lastActivityAt < idleCutoff) {
+		if (entry.lastActivityAt < idleCutoff || entry.createdAt < ageCutoff) {
 			sessions.delete(sid);
 			entry.transport.close().catch((error) => {
 				console.warn('Failed to close evicted MCP session transport', {

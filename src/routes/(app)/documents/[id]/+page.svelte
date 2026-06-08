@@ -21,10 +21,13 @@
 
 	/**
 	 * Resolve a repo reference to a browsable URL. Full URLs are used as-is;
-	 * `owner/repo` shorthand is expanded to a GitHub URL for convenience.
+	 * "hostname/path" (contains a dot before the first slash) gets https:// prepended;
+	 * bare "owner/repo" shorthand is expanded to a GitHub URL.
 	 */
 	function repoHref(url: string): string {
 		if (/^https?:\/\//i.test(url)) return url;
+		const slashIdx = url.indexOf('/');
+		if (slashIdx > 0 && url.slice(0, slashIdx).includes('.')) return `https://${url}`;
 		return `https://github.com/${url}`;
 	}
 

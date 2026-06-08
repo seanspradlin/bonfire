@@ -50,7 +50,7 @@ const handleWellKnown: Handle = async ({ event, resolve }) => {
 
 	if (
 		pathname === '/.well-known/oauth-protected-resource' ||
-		pathname === '/.well-known/oauth-protected-resource/api/auth'
+		pathname === '/.well-known/oauth-protected-resource/mcp'
 	) {
 		return new Response(
 			JSON.stringify({
@@ -68,18 +68,19 @@ const handleWellKnown: Handle = async ({ event, resolve }) => {
 // ---------------------------------------------------------------------------
 // Session population
 //
-// Skipped for Bearer token requests (MCP, API-to-API) — those are
-// authenticated at the handler level via JWT verification, not session cookies.
+// Errors here are expected for OAuth Bearer tokens (JWT for MCP) — those are
+// not session tokens, so we silently fall through with no session populated.
 // ---------------------------------------------------------------------------
 
 const handleSession: Handle = async ({ event, resolve }) => {
-	const authHeader = event.request.headers.get('authorization');
-	if (!authHeader?.startsWith('Bearer ')) {
+	try {
 		const session = await auth.api.getSession({ headers: event.request.headers });
 		if (session) {
 			event.locals.user = session.user;
 			event.locals.session = session.session;
 		}
+	} catch {
+		// Not a session token (e.g. Bearer JWT for MCP) — ignore.
 	}
 	return resolve(event);
 };
