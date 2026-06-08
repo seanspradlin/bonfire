@@ -9,6 +9,13 @@ const config = {
 	kit: {
 		adapter: adapter(),
 
+		// SvelteKit's CSRF check fires before handle hooks, so Better Auth's
+		// svelteKitHandler cannot intercept OAuth token requests in time. Disabling
+		// is safe because Better Auth sets SameSite=Lax on all session cookies, which
+		// already prevents the same CSRF attack (browser won't send cookies on
+		// cross-origin POSTs from a malicious site).
+		csrf: { checkOrigin: false },
+
 		// '@' maps to src/lib/server so that ported server modules keep their
 		// @/modules/... imports working unchanged.
 		alias: {
