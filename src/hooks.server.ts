@@ -50,7 +50,8 @@ const handleWellKnown: Handle = async ({ event, resolve }) => {
 
 	if (
 		pathname === '/.well-known/oauth-protected-resource' ||
-		pathname === '/.well-known/oauth-protected-resource/mcp'
+		pathname === '/.well-known/oauth-protected-resource/mcp' ||
+		pathname === '/.well-known/oauth-protected-resource/api/auth'
 	) {
 		return new Response(
 			JSON.stringify({
